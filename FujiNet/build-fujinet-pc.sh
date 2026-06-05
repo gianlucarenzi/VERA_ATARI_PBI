@@ -34,7 +34,8 @@ fi
 # ── build parameters ───────────────────────────────────────────────────────
 
 NCPU=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 1)
-BUILD_DIR="$SRC_DIR/build/ATARI"
+# build.sh uses $SRC_DIR/build as build directory
+BUILD_DIR="$SRC_DIR/build"
 DIST_DIR="$BUILD_DIR/dist"
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 
@@ -46,18 +47,35 @@ echo "  Build type : $BUILD_TYPE"
 echo "  CPU cores  : $NCPU"
 echo ""
 
-# ── cmake configure ────────────────────────────────────────────────────────
+# ── safeguard version.h ─────────────────────────────────────────────────────
+# FujiNet-PC build requires include/version.h to exist.
+# If it's missing (e.g. in some nightly checkouts), create a default one.
 
-echo ">>> cmake configure ..."
-cmake -S "$SRC_DIR" -B "$BUILD_DIR" \
-    -DFUJINET_TARGET=ATARI \
-    -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
+if [ ! -f "$SRC_DIR/include/version.h" ]; then
+    echo ">>> Creating default include/version.h ..."
+    mkdir -p "$SRC_DIR/include"
+    cat > "$SRC_DIR/include/version.h" <<EOF
+#define FN_VERSION_MAJOR 1
+#define FN_VERSION_MINOR 6
+#define FN_VERSION_PATCH 1
+#define FN_VERSION_FULL "1.6.1-dev"
+#define FN_VERSION_DATE "$(date +'%Y-%m-%d %H:%M:%S')"
+EOF
+fi
 
-# ── cmake build ────────────────────────────────────────────────────────────
+# ── build with build.sh ─────────────────────────────────────────────────────
+# Align with .github/workflows/build-fujinet-pc.yml: use build.sh -p ATARI
 
-echo ""
-echo ">>> cmake build (--target=dist, -j$NCPU) ..."
-cmake --build "$BUILD_DIR" --target=dist -- -j"$NCPU"
+echo ">>> building with ./build.sh -p ATARI ..."
+cd "$SRC_DIR"
+
+# Ensure we are building for Release unless specified
+BUILD_FLAGS=""
+if [ "$BUILD_TYPE" = "Debug" ]; then
+    BUILD_FLAGS="-g"
+fi
+
+./build.sh -p ATARI $BUILD_FLAGS
 
 # ── verify artifacts ───────────────────────────────────────────────────────
 
