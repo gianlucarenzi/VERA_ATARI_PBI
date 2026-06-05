@@ -1,0 +1,146 @@
+name: "FujiNet Nightly Builds"
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+env:
+  KEEP_NIGHTLIES: 3
+
+jobs:
+  cleanup-nightly:
+    name: "Clean up old nightly assets"
+    if: ${{ vars.RUN_NIGHTLY == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Delete old nightly assets (keep last ${{ env.KEEP_NIGHTLIES }})
+        continue-on-error: true
+        run: |
+          KEEP=${{ env.KEEP_NIGHTLIES }}
+          SKIP=$((KEEP + 1))
+          gh release view nightly --json assets --jq '.assets[].name' | \
+            sort -r | \
+            tail -n +${SKIP} | \
+            xargs -r -I {} gh release delete-asset nightly {} --yes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  nightly-release:
+    name: "PlatformIO CI"
+    needs: cleanup-nightly
+    if: ${{ vars.RUN_NIGHTLY == 'true' }}
+    runs-on: "ubuntu-latest"
+    strategy:
+      matrix:
+        target-platform: [ATARI, ATARI-8mb, ADAM, APPLE, IEC-LOLIN-D32, IEC-NUGGET, COCO, MASTERIES-REVAB, MASTERIES-REVA-SPIFIX, RS232]
+
+    steps:
+    - name: Checkout Source
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Cache pip
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Cache PlatformIO
+      uses: actions/cache@v4
+      with:
+        path: ~/.platformio
+        key: ${{ runner.os }}-${{ hashFiles('**/lockfiles') }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12.1'
+
+    - name: Install PlatformIO
+      run: |
+        python -m pip install --upgrade pip
+        pip install setuptools
+        pip install --upgrade platformio
+        pip install Jinja2
+        pip install pyyaml
+
+    - name: Show python version
+      run: python --version
+
+    - name: Show pio system info
+      run: pio system info
+
+    - name: Show pio location
+      run: pip show platformio
+
+    - name: Create PlatformIO INI for Build
+      run: cd /home/runner/work/fujinet-firmware/fujinet-firmware && /usr/bin/bash ./build.sh -l /home/runner/work/fujinet-firmware/fujinet-firmware/.github/workflows/platformio.release-${{ matrix.target-platform }}.ini -i /home/runner/work/fujinet-firmware/fujinet-firmware/platformio-generated.ini
+
+    - name: Show platformio.ini
+      run: cat /home/runner/work/fujinet-firmware/fujinet-firmware/platformio-generated.ini
+
+    - uses: benjlevesque/short-sha@v3.0
+      id: short-sha
+      with:
+        length: 6
+
+    - name: Get Old Version
+      id: version
+      run: |
+        YEAR=$(date +%Y)
+        DAY=$(date +%j)
+        echo "VERSION=n${YEAR}.${DAY}-${{ steps.short-sha.outputs.sha }}" >> $GITHUB_OUTPUT
+
+    - name: Get Commit Date
+      id: commit-date
+      run: echo "COMMIT_DATE=$(git --no-pager log -1 --pretty='format:%cd' --date='format:%Y-%m-%d %H:%M:%S')">> $GITHUB_OUTPUT
+
+    - name: Set Nightly Version in Firmware
+      id: nightly-version
+      run: sed -i 's/#define FN_VERSION_FULL "[^"]*"/#define FN_VERSION_FULL "${{ steps.version.outputs.VERSION }}"/' /home/runner/work/fujinet-firmware/fujinet-firmware/include/version.h
+
+    - name: Set Version Date in Firmware
+      id: nightly-date
+      run: sed -i 's/#define FN_VERSION_DATE "[^"]*"/#define FN_VERSION_DATE "${{ steps.commit-date.outputs.COMMIT_DATE }}"/' /home/runner/work/fujinet-firmware/fujinet-firmware/include/version.h
+
+    - name: Create "version.txt" file
+      run: echo "${{ steps.version.outputs.VERSION }}.${{ matrix.target-platform }}" > ./version.txt
+
+    - name: Build release
+      run: cd /home/runner/work/fujinet-firmware/fujinet-firmware && /usr/bin/bash ./build.sh -z -l /home/runner/work/fujinet-firmware/fujinet-firmware/.github/workflows/platformio.release-${{ matrix.target-platform }}.ini -i /home/runner/work/fujinet-firmware/fujinet-firmware/platformio-generated.ini
+
+    - name: Standardize Firmware Name
+      run: mv ./firmware/fujinet*.zip ./firmware/fujinet-${{ matrix.target-platform }}-${{ steps.version.outputs.VERSION }}-nightly.zip
+
+    - name: Create Release
+      id: create-release
+      uses: softprops/action-gh-release@v2.2.2
+      with:
+#        body_path: ${{ github.workspace }}/.github/nightly-release.txt
+        body: |
+          Nightly builds of the following firmware:
+
+          - `fujinet-ADAM-*` - Coleco Adam
+          - `fujinet-APPLE-*` - Apple 2
+          - `fujinet-ATARI-*` - Atari 8-bit
+          - `fujinet-IEC-LOLIN-D32-*` - Commodore IEC
+
+          # ⚠️ There is NO guarantee that these builds work!! ⚠️
+
+          These builds are provided 100% ***AS-IS*** with absolutely no guarantee that they will work. Only use these builds if you know what you are doing & are willing to troubleshoot any problems on your own.
+
+          Of course reporting any bugs you run across would be greatly appreciated but they should be accompanied by console logs & any other appropriate details that might help in troubleshooting the issues. Generally the [FujiNet Discord](https://discord.gg/yKtS3fxU) is the best place to discuss any issues you find in these builds.
+
+          Current commit: [${{ steps.short-sha.outputs.sha }}](${{ github.server_url }}/${{ github.repository }}/commits/${{ github.sha }})
+        name: Nightly Builds
+        prerelease: true
+        files: ${{ github.workspace }}/firmware/fujinet-*-nightly.zip
+        tag_name: nightly
+        generate_release_notes: true
+        make_latest: false

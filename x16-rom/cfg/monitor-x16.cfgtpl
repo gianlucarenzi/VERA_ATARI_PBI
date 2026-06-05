@@ -1,0 +1,21 @@
+MEMORY {
+	#include "x16.cfginc"
+
+	L0220:    start = $0220, size = $0019; # overlaps with top end of BASIC input line only
+
+	BANK5:      start = $C000, size = $3A80, fill=yes, fillval=$AA;
+	KSUP_CODE2: start = $FA80, size = $0428, fill=yes, fillval=$AA;
+	KSUP_VEC2:  start = $FEA8, size = $0158, fill=yes, fillval=$AA;
+}
+
+SEGMENTS {
+	jmptbl:           load = BANK5, type = ro;
+	monitor:          load = BANK5, type = ro;
+	asmchars1:        load = BANK5, type = ro, define = yes;
+	asmchars2:        load = BANK5, type = ro, define = yes;
+	mnemos1:          load = BANK5, type = ro, define = yes;
+	mnemos2:          load = BANK5, type = ro, define = yes;
+	monitor_ram_code: load = BANK5, run = L0220, type = ro, define = yes;
+	KSUP_CODE2:       load = KSUP_CODE2, type = ro;
+	KSUP_VEC2:        load = KSUP_VEC2,  type = ro;
+}

@@ -1,0 +1,24 @@
+MEMORY {
+	#include "x16.cfginc"
+	MENUZP:      start = $0022, size = $005E, fill=no;
+	HEXEDITZP:   start = $0022, size = $005E, fill=no;
+	HEXEDITBSS:  start = $0200, size = $0050, fill=no;
+	MENUBSS:     start = $0200, size = $0050, fill=no;
+	ROM:         start = $C000, size = $3A80, fill=yes, fillval=$AA;
+	KSUP_CODE11: start = $FA80, size = $0428, fill=yes, fillval=$AA;
+	KSUP_VEC11:  start = $FEA8, size = $0158, fill=yes, fillval=$AA;
+
+}
+
+SEGMENTS {
+	MENUZP:      load = MENUZP, type = zp;
+	HEXEDITZP:   load = HEXEDITZP, type = zp;
+	MENUBSS:     load = MENUBSS, type = bss;
+	HEXEDITBSS:  load = HEXEDITBSS, type = bss;
+	JMPTBL:      load = ROM,     type = ro;
+	CODE:        load = ROM,     type = ro;
+	MENU:        load = ROM,     type = ro;
+	HEXEDIT:     load = ROM,     type = ro;
+	KSUP_CODE11: load = KSUP_CODE11, type = ro;
+	KSUP_VEC11:  load = KSUP_VEC11,  type = ro;
+}

@@ -1,0 +1,34 @@
+;----------------------------------------------------------------------
+; Channel: Messages
+;----------------------------------------------------------------------
+; (C)1983 Commodore Business Machines (CBM)
+; additions: (C)2020 Michael Steil, License: 2-clause BSD
+
+ms1	.byt $d,"I/O ERROR ",$a3
+ms5	.byt $d,"SEARCHING",$a0
+ms6	.byt "FOR",$a0
+ms7	.byte " FROM ",'$'+$80
+ms8	.byte " TO ",'$'+$80
+ms10	.byt $d,"LOADIN",$c7
+ms11	.byt $d,"SAVING",$a0
+ms21	.byt $d,"VERIFYIN",$c7
+ms17	.byt $d,"FOUND",$a0
+ms18	.byt $d,"OK",$8d
+; ms34 .byt $d,"MONITOR",$8d
+; ms36 .byt $d,"BREA",$cb
+
+;print message to screen only if
+;output enabled
+;
+spmsg	bit msgflg      ;printing messages?
+	bpl msg10       ;no...
+msg	lda ms1,y
+	php
+	and #$7f
+	jsr bsout
+	iny
+	plp
+	bpl msg
+msg10	clc
+	rts
+

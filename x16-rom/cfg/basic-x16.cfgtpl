@@ -1,0 +1,25 @@
+MEMORY {
+	#include "x16.cfginc"
+
+	BASIC:     start = $C000, size = $3B00, fill=yes, fillval=$AA;
+	KSUP_CODE: start = $FB00, size = $0300, fill=yes, fillval=$AA;
+	FPJMP:     start = $FE00, size = $00A8, fill=yes, fillval=$AA;
+	KSUP_VEC:  start = $FEA8, size = $0158, fill=yes, fillval=$AA;
+}
+
+SEGMENTS {
+	ZPBASIC:  load = ZPBASIC,  type = zp;
+	ZPAUDIO:  load = ZPAUDIO,  type = zp;
+	BVECTORS: load = BVECTORS, type = bss;
+	BVARS:    load = BVARS,    type = bss;
+
+	ZPMATH:   load = ZPMATH,   type = zp;
+	FPVARS:   load = FPVARS,   type = bss;
+	BVARSB0:  load = BVARSB0,  type = bss;
+
+	BASIC:     load = BASIC,     type = ro;
+	MATH:      load = BASIC,     type = ro;
+	FPJMP:     load = FPJMP,     type = ro;
+	KSUP_CODE: load = KSUP_CODE, type = ro;
+	KSUP_VEC:  load = KSUP_VEC,  type = ro;
+}

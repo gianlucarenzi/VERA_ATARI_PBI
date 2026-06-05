@@ -1,0 +1,14 @@
+MEMORY {
+	#include "x16.cfginc"
+
+	DOS:      start = $C000, size = $4000, fill=yes, fillval=$AA;
+}
+
+SEGMENTS {
+	ZPDOS:        load = ZPDOS,    type = zp;
+
+	dos_jmptab:   load = DOS,      type = ro;
+	CODE:         load = DOS,      type = ro;
+
+	BSS:          load = DOSDAT,   type = bss;
+}

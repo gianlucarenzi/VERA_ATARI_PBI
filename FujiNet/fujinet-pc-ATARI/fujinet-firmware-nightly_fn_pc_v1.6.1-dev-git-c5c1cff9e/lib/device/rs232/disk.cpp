@@ -1,0 +1,319 @@
+#ifdef BUILD_RS232
+
+#include "disk.h"
+#include "fujiCommandID.h"
+
+#include <cstring>
+
+#include "../../include/debug.h"
+
+#include "fujiDevice.h"
+#include "utils.h"
+
+rs232Disk::rs232Disk()
+{
+    device_active = false;
+    _mount_time = 0;
+}
+
+// Read disk data and send to computer
+void rs232Disk::rs232_read(uint32_t sector)
+{
+    transaction_begin(TRANS_STATE::NO_GET);
+
+    Debug_printf("disk READ %lu\n", sector);
+
+    if (_disk == nullptr)
+    {
+        transaction_error();
+        return;
+    }
+
+    uint32_t readcount;
+
+    bool err = _disk->read(sector, &readcount);
+
+    // Send result to Atari
+    transaction_put(_disk->_disk_sectorbuff, readcount, err);
+}
+
+// Write disk data from computer
+void rs232Disk::rs232_write(uint32_t sector, bool verify)
+{
+    //Debug_print("disk WRITE\n");
+
+    if (_disk != nullptr)
+    {
+        uint16_t sectorSize = _disk->sector_size(sector);
+
+        memset(_disk->_disk_sectorbuff, 0, DISK_SECTORBUF_SIZE);
+
+        if (transaction_get(_disk->_disk_sectorbuff, sectorSize))
+        {
+            if (_disk->write(sector, verify) == false)
+            {
+                transaction_complete();
+                return;
+            }
+        }
+    }
+
+    transaction_error();
+}
+
+// Status
+void rs232Disk::rs232_status(FujiStatusReq reqType)
+{
+    Debug_print("disk STATUS\n");
+
+    /* STATUS BYTES
+        #0 - Drive status
+            Bit 7 = 1: 26 sectors per track (1050/XF551 drive)
+            Bit 6 = 1: Double sided disk (XF551 drive)
+            Bit 5 = 1: Double density (XF551 drive)
+            Bit 4 = 1: Motor running (always 0 on XF551)
+
+            Bit 3 = 1: Failed due to write protected disk
+            Bit 2 = 1: Unsuccessful PUT operation
+            Bit 1 = 1: Receive error on last data frame (XF551)
+            Bit 0 = 1: Receive error on last command frame (XF551)
+
+        #1 - Floppy drive controller status (inverted from FDC)
+            Bit 7 = 0: Drive not ready (1050 drive)
+            Bit 6 = 0: Write protect error
+            Bit 5 = 0: Deleted sector (sector marked as deleted in sector header)
+            Bit 4 = 0: Record not found (missing sector)
+
+            Bit 3 = 0: CRC error
+            Bit 2 = 0: Lost data
+            Bit 1 = 0: Data request pending
+            Bit 0 = 0: Busy
+
+        #2 - Format timeout
+              810 drive: $E0 = 224 vertical blanks (4 mins NTSC)
+            XF551 drive: $FE = 254 veritcal blanks (4.5 mins NTSC)
+
+        #3 - Unused ($00)
+    */
+    // TODO: Why $DF for second byte?
+    // TODO: Set bit 4 of drive status and bit 6 of FDC status on read-only disk
+#define DRIVE_DEFAULT_TIMEOUT_810 0xE0
+#define DRIVE_DEFAULT_TIMEOUT_XF551 0xFE
+
+    uint8_t _status[4];
+    _status[0] = 0x00;
+    _status[1] = ~DISK_CTRL_STATUS_CLEAR; // Negation of default clear status
+    _status[2] = DRIVE_DEFAULT_TIMEOUT_810;
+    _status[3] = 0x00;
+
+    if (_disk != nullptr)
+        _disk->status(_status);
+
+    Debug_printf("response: 0x%02x, 0x%02x, 0x%02x\n", _status[0], _status[1], _status[2]);
+
+    transaction_put(_status, sizeof(_status), false);
+}
+
+// Disk format
+void rs232Disk::rs232_format()
+{
+    transaction_begin(TRANS_STATE::NO_GET);
+    Debug_print("disk FORMAT\n");
+
+    if (_disk == nullptr)
+    {
+        transaction_error();
+        return;
+    }
+
+    uint32_t responsesize;
+    bool err = _disk->format(&responsesize);
+
+    // Send to computer
+    transaction_put(_disk->_disk_sectorbuff, responsesize, err);
+}
+
+// Read percom block
+void rs232Disk::rs232_read_percom_block()
+{
+    transaction_begin(TRANS_STATE::NO_GET);
+    Debug_print("disk READ PERCOM BLOCK\n");
+
+    if (_disk == nullptr)
+    {
+        transaction_error();
+        return;
+    }
+
+#ifdef VERBOSE_DISK
+    _disk->dump_percom_block();
+#endif
+    transaction_put((uint8_t *)&_disk->_percomBlock, sizeof(_disk->_percomBlock), false);
+}
+
+// Write percom block
+void rs232Disk::rs232_write_percom_block()
+{
+    transaction_begin(TRANS_STATE::WILL_GET);
+    Debug_print("disk WRITE PERCOM BLOCK\n");
+
+    if (_disk == nullptr)
+    {
+        transaction_error();
+        return;
+    }
+
+    transaction_get((uint8_t *)&_disk->_percomBlock, sizeof(_disk->_percomBlock));
+#ifdef VERBOSE_DISK
+    _disk->dump_percom_block();
+#endif
+    transaction_complete();
+}
+
+/* Mount Disk
+   We determine the type of image based on the filename extenrs232n.
+   If the disk_type value passed is not MEDIATYPE_UNKNOWN then that's used instead.
+   If filename has no extenrs232n or is NULL and disk_type is MEDIATYPE_UNKOWN,
+   then we assume it's MEDIATYPE_ATR.
+   Return value is MEDIATYPE_UNKNOWN in case of failure.
+*/
+mediatype_t rs232Disk::mount(fnFile *f, const char *filename, uint32_t disksize,
+                             disk_access_flags_t access_mode, mediatype_t disk_type)
+{
+    // TAPE or CASSETTE: use this function to send file info to cassette device
+    //  MediaType::discover_mediatype(filename) can detect CAS and WAV files
+    Debug_print("disk MOUNT\n");
+
+    // Destroy any existing MediaType
+    if (_disk != nullptr)
+    {
+        delete _disk;
+        _disk = nullptr;
+    }
+
+    // Determine MediaType based on filename extenrs232n
+    if (disk_type == MEDIATYPE_UNKNOWN && filename != nullptr)
+        disk_type = MediaType::discover_mediatype(filename);
+
+    // TODO: Stupid hack to treat ROM-sized files as ROMs and not disks. Should be
+    // replaced with proper ROM-handling logic
+    if (disksize == 8192 || disksize == 16384 || disksize == 32768)
+        return mountROM(f, filename, disksize, disk_type);
+
+    // Now mount based on MediaType
+    switch (disk_type)
+    {
+    case MEDIATYPE_IMG:
+    case MEDIATYPE_UNKNOWN:
+    default:
+        device_active = true;
+        _mount_time = time(NULL);
+        _disk = new MediaTypeImg();
+        return _disk->mount(f, disksize);
+    }
+}
+
+mediatype_t rs232Disk::mount_disk_media(fnFile *f, const char *filename, uint32_t disksize,
+                                         mediatype_t disk_type)
+{
+    return mount(f, filename, disksize, DISK_ACCESS_MODE_READ, disk_type);
+}
+
+mediatype_t rs232Disk::mountROM(fnFile *f, const char *filename, uint32_t disksize, mediatype_t disk_type)
+{
+    uint32_t offset, rlen, sectorNum;
+    MediaTypeImg romImage;
+
+
+    romImage.mount(f, disksize);
+
+    Debug_printv("Attempting to send ROM contents to pico");
+    // "open" RAM in bank
+    if (!SYSTEM_BUS.sendCommand(FUJI_DEVICEID_DBC, NETCMD_OPEN, (uint16_t) 0)) {
+        Debug_printv("Failed to open pico");
+        return (mediatype_t) -1;
+    }
+
+    for (offset = sectorNum = 0; offset < disksize; offset += rlen, sectorNum++)
+    {
+        if (romImage.read(sectorNum, &rlen) != 0)
+            break;
+        if (!SYSTEM_BUS.sendCommand(FUJI_DEVICEID_DBC, NETCMD_WRITE,
+                                    std::string((char *) romImage._disk_sectorbuff, rlen))) {
+            Debug_printv("Failed to send block");
+            break;
+        }
+    }
+
+    // "closing" RAM will make the bank active
+    SYSTEM_BUS.sendCommand(FUJI_DEVICEID_DBC, NETCMD_CLOSE);
+
+    return disk_type;
+}
+
+// Destructor
+rs232Disk::~rs232Disk()
+{
+    if (_disk != nullptr)
+    {
+        delete _disk;
+        _disk = nullptr;
+    }
+}
+
+// Unmount disk file
+void rs232Disk::unmount()
+{
+    Debug_print("disk UNMOUNT\n");
+
+    if (_disk != nullptr)
+    {
+        _disk->unmount();
+        device_active = false;
+        _mount_time = 0;
+    }
+}
+
+// Create blank disk
+success_is_true rs232Disk::write_blank(fnFile *f, uint16_t sectorSize, uint16_t numSectors)
+{
+    Debug_print("disk CREATE NEW IMAGE\n");
+
+    return MediaTypeImg::create(f, sectorSize, numSectors);
+}
+
+// Process command
+void rs232Disk::rs232_process(FujiBusPacket &packet)
+{
+    Debug_print("disk rs232_process()\n");
+
+    switch (packet.command())
+    {
+    case DISKCMD_READ:
+        rs232_read(packet.param(0));
+        return;
+    case DISKCMD_PUT:
+        rs232_write(packet.param(0), false);
+        return;
+    case DISKCMD_STATUS:
+    case DISKCMD_WRITE:
+        rs232_write(packet.param(0), true);
+        return;
+    case DISKCMD_FORMAT:
+    case DISKCMD_FORMAT_MEDIUM:
+        rs232_format();
+        return;
+    case DISKCMD_PERCOM_READ:
+        rs232_read_percom_block();
+        return;
+    case DISKCMD_PERCOM_WRITE:
+        rs232_write_percom_block();
+        return;
+    default:
+        break;
+    }
+
+    transaction_error();
+}
+
+#endif /* BUILD_RS232 */

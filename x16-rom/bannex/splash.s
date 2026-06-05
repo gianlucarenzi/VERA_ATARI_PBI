@@ -1,0 +1,459 @@
+.include "banks.inc"
+.include "../math/math.inc"
+
+.include "kernal.inc"
+.include "io.inc"
+.include "machine.inc"
+
+plot = $fff0
+fbuffr= $0100
+
+.importzp index, facho, txttab
+.import screen_default_color_from_nvram, bajsrfar, memsiz
+.import basic_buf ; BASIC line buffer
+
+.export splash
+
+.macro fplib_call addr
+	jsr bajsrfar
+	.word addr
+	.byte BANK_BASIC
+.endmacro
+
+
+.proc splash: near
+	lda #<btrfly
+	ldy #>btrfly
+	jsr strout
+
+	jsr screen_default_color_from_nvram
+
+	; position for ram count
+	ldy #8
+	ldx #3
+	clc
+	jsr plot
+	sec
+	jsr $ff99       ;read num ram banks
+
+	tax
+	bne initm2
+	ldx #<2048
+	lda #>2048
+	bne initm3
+initm2:
+	sta facho
+	lda #0
+	asl facho
+	rol
+	asl facho
+	rol
+	asl facho
+	rol
+	ldx facho
+initm3:
+	jsr numout
+	jsr screen
+	cpx #40
+	bcc inib40
+
+	lda #<l4msg40
+	ldy #>l4msg40
+	jsr strout
+
+	ldy #8
+	ldx #1
+	clc
+	jsr plot
+
+	lda #<l2msg40
+	ldy #>l2msg40
+	jsr strout
+
+	ldy #8
+	ldx #5
+	clc
+	jsr plot
+
+	sec
+	jsr memtop
+	txa
+	sec
+	sbc txttab
+	tax
+	tya
+	sbc txttab+1
+	jsr numout
+
+	lda #<l6msg40
+	ldy #>l6msg40
+	jsr strout
+
+	bra iniend
+inib40: ; screen is smaller than 40, use compact banner
+	lda #<l4msg20
+	ldy #>l4msg20
+	jsr strout
+
+	ldy #8
+	ldx #1
+	clc
+	jsr plot
+
+	lda #<l2msg20
+	ldy #>l2msg20
+	jsr strout
+
+	ldy #8
+	ldx #2
+	clc
+	jsr plot
+
+	lda #<l3msg20
+	ldy #>l3msg20
+	jsr strout
+
+	ldy #8
+	ldx #4
+	clc
+	jsr plot
+
+	lda #<l5msg20
+	ldy #>l5msg20
+	jsr strout
+
+	ldy #8
+	ldx #5
+	clc
+	jsr plot
+
+	sec
+	jsr memtop
+	txa
+	sec
+	sbc txttab
+	tax
+	tya
+	sbc txttab+1
+	jsr numout
+
+	lda #<l6msg20
+	ldy #>l6msg20
+	jsr strout
+
+	ldy #8
+	ldx #6
+	clc
+	jsr plot
+
+	lda #<l7msg20
+	ldy #>l7msg20
+	jsr strout
+iniend:
+	ldy #0
+	ldx #7
+	clc
+	jsr plot
+
+	; check rom write-protected
+	jsr check_rom
+	bcc @checkvera ; ROM write-protected, continue
+	lda #<romwriteenabled
+	ldy #>romwriteenabled
+	jsr strout
+
+	; check vera version
+@checkvera:
+	php
+	sei
+	lda #%01111110
+	sta VERA_CTRL
+	lda $9f29
+	cmp #'V'
+	bne @notok
+	lda $9f2a
+	bne @ok ; assume major version > 0 is fine
+	lda $9f2b
+	cmp #3
+	bcc @notok ; assume version < 0.3.x is not okay
+	lda $9f2c
+	cmp #3     ; 0.3.3 is problematic
+	beq @badvera
+	bra @ok
+@notok:
+	stz VERA_CTRL
+	lda #<updatevera
+	ldy #>updatevera
+	jsr strout
+	bra @ok
+@badvera:
+	stz VERA_CTRL
+	lda #<badvera
+	ldy #>badvera
+	jsr strout
+@ok:
+	stz VERA_CTRL
+	plp
+
+	ldx #MACHINE_PROPERTY_FAR
+	lda #17
+	jsr extapi
+	bcc no816
+
+.pushcpu
+.setcpu "65816"
+	sec
+	jsr plot
+	phx
+	phy
+
+	ldy #8
+	ldx #4
+	clc
+	jsr plot
+
+	php
+	sei
+	clc
+	xce
+	php
+
+	rep #$30
+.A16
+.I16
+	lda #8
+	jsr extapi16
+
+	plp
+.A8
+.I8
+	xce
+	plp
+
+.popcpu
+	stz facho
+	lsr
+	ror facho
+	lsr
+	ror facho
+	ldx facho
+	jsr numout
+
+	jsr screen
+	cpx #40
+	bcc small816msg
+
+	lda #<msg816banks
+	ldy #>msg816banks
+	bra do_816_msg
+small816msg:
+	lda #<small_msg816banks
+	ldy #>small_msg816banks
+do_816_msg:
+	jsr strout
+
+	ply
+	plx
+	clc
+	jsr plot
+no816:
+	rts
+.endproc
+
+.proc strout: near
+	sta index
+	sty index+1
+
+	ldy #0
+:   lda (index),y
+	beq :+
+	jsr bsout
+	iny
+	bne :-
+:	rts
+.endproc
+
+.proc numout: near
+	sta facho
+	stx facho+1
+	ldx #$90	;exponent of 16.
+	sec		;number is positive.
+	fplib_call floatc
+	fplib_call foutc
+	lda #<fbuffr
+	ldy #>fbuffr
+	jmp strout	;print and return.
+.endproc
+
+btrfly:
+	.byt $8f, $93
+	; line 0
+	.byt $9c, $12, $df, $92, "     ", $12, $a9
+	.byt $0d
+	; line 1
+	.byt $9a, $12, $a5, $df, $92, "   ", $12, $a9, $a7, $92
+	.byt $0d
+	; line 2
+	.byt $9f, $12, $b5, " ", $df, $92, " ", $12, $a9, " ", $b6
+	.byt $0d
+	; line 3
+	.byt $1e, " ", $b7, $12, $bb, $92, " ", $12, $ac, $92, $b7
+	.byt $0d
+	; line 4
+	.byt $9e, " ", $af, $12, $be, $92, " ", $12, $bc, $92, $af
+	.byt $0d
+	; line 5
+	.byt $81, $aa, $12, " ", $92, $a9, " ", $df, $12, " ", $92, $b4
+	.byt $0d
+	; line 6
+	.byt $1c, $b6, $a9, "   ", $df, $b5
+	.byt $0d
+	.byt 5
+	.byt 0
+
+l2msg40:
+	.byte "**** COMMANDER X16 BASIC V2 ****",0
+l2msg20:
+	.byte "COMMANDER",0
+l3msg20:
+	.byte "X16 BASIC V2",0
+
+l4msg40:
+	.byte "K HIGH RAM"
+.ifdef RELEASE_VERSION
+	.byte " - ROM VER R"
+.if RELEASE_VERSION >= 100
+	.byte (RELEASE_VERSION / 100) + '0'
+.endif
+.if RELEASE_VERSION >= 10
+	.byte ((RELEASE_VERSION / 10) .mod 10) + '0'
+.endif
+	.byte (RELEASE_VERSION .mod 10) + '0'
+.else
+	.byte " - GIT "
+	.incbin "../build/signature.bin"
+.endif
+	.byte 0
+
+l4msg20:
+	.byte "K HI RAM",0
+l5msg20:
+.ifdef RELEASE_VERSION
+	.byte "ROM VER R"
+.if RELEASE_VERSION >= 100
+	.byte (RELEASE_VERSION / 100) + '0'
+.endif
+.if RELEASE_VERSION >= 10
+	.byte ((RELEASE_VERSION / 10) .mod 10) + '0'
+.endif
+	.byte (RELEASE_VERSION .mod 10) + '0'
+.else
+	.incbin "../build/signature.bin"
+.endif
+	.byte 0
+
+l6msg40:
+	.byte " BASIC BYTES FREE",0
+l6msg20:
+	.byte " BASIC",0
+l7msg20:
+	.byte "BYTES FREE",0
+
+updatevera:
+	.byte 13,"IMPORTANT! YOUR VERA'S FIRMWARE IS",13
+	.byte "DEPRECATED. PLEASE UPDATE TO VERSION",13
+	.byte "0.3.1 OR LATER.",13
+	.byte "LATER ROMS MAY NOT BOOT WITH THE",13
+	.byte "CURRENT VERA VERSION.",13
+	.byte 13,"USE THE HELP COMMAND FOR FIRMWARE INFO",13,0
+
+badvera:
+	.byte 13,"YOUR VERA'S FIRMWARE VERSION IS KNOWN",13
+	.byte "TO HAVE VISUAL GLITCHES. PLEASE UPDATE",13
+	.byte "TO 47.0.2 OR LATER, OR DOWNGRADE TO",13
+	.byte "VERSION 0.3.2.",13
+	.byte "RELEASES: HTTPS://GITHUB.COM/X16COMMUNITY/VERA-MODULE/RELEASES/",13
+	.byte 13,"USE THE HELP COMMAND FOR FIRMWARE INFO",13,0
+
+romwriteenabled:
+	.byte 13,"REMOVE JUMPER J1 TO WRITE-PROTECT ROM!",13,0
+
+msg816banks:
+	.byte "K RAM IN FAR BANKS",0
+
+; This will overwrite the git commit hash
+; on small screens, but it's arguably more relevant.
+;
+; The user can still run HELP to show the commit hash
+small_msg816banks:
+	.byte "K FAR  ",0
+
+; Reads ROM manufacturer ID, returned in Y register
+.proc rom_id
+	; Backup ROM bank
+	lda rom_bank
+	pha
+
+	; Read ROM chip ID
+	lda #$01		; $5555 = $aa 
+	sta rom_bank
+	lda #$aa
+	sta $d555
+
+	dec rom_bank	; $2aaa = $55
+	lda #$55
+	sta $eaaa
+
+	inc rom_bank	; $5555 = $90
+	lda #$90
+	sta $d555
+
+	dec rom_bank	; Get Manufacturer ID
+	ldy $c000
+
+	lda #$f0		; Exit
+	sta $c000
+
+	; Restore ROM bank
+	pla
+	sta rom_bank
+	rts
+.endproc
+
+; Returns C=1 if ROM is write-enabled
+.proc check_rom
+	; Disable IRQ
+	php
+	sei
+
+	; Copy code to RAM
+	ldx #.sizeof(rom_id)
+:	lda rom_id-1,x
+	sta basic_buf-1,x
+	dex
+	bne :-
+
+	; Run test
+	jsr basic_buf
+
+	; Clear RAM buffer
+	lda #0
+	ldx #.sizeof(rom_id)
+:	sta basic_buf-1,x
+	dex
+	bne :-
+
+	; Compare SST39SF040 manufacturer ID
+	cpy #$bf
+	bne protected
+
+unprotected:
+	plp ; Restore IRQ flag
+	sec
+	rts
+
+protected:
+	plp ; Restore IRQ flag
+	clc
+	rts
+.endproc
