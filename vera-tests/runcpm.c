@@ -1389,8 +1389,12 @@ int main(void)
     vt_reset();
 
     /* Disable ATARI ANTIC display — VERA/VGA is our output; prevents ANTIC
-     * screen RAM from being dirtied by the OS cursor/E: handler. */
-    *(volatile unsigned char*)0x022F = 0x00;   /* SDMCTL = 0 */
+     * screen RAM from being dirtied by the OS cursor/E: handler.
+     * ONLY do this if VERA is detected, otherwise we need ANTIC for fallback. */
+    if (vctl)
+    {
+        *(volatile unsigned char*)0x022F = 0x00;   /* SDMCTL = 0 */
+    }
 
     /* Helper: set VERA text color directly (fg/bg are VERA palette indices). */
 #define SET_COLOR(fg, bg) do { if (vctl) vctl[VCTL_PARAM1] = (unsigned char)(((bg)<<4)|(fg)); } while(0)
