@@ -29,6 +29,10 @@ Il progetto è composto da due componenti principali, entrambi nella directory `
     *   **Riga Logica Dinamica:** Gestisce righe logiche di lunghezza variabile (fino a 3 righe fisiche in modalità 40 colonne) e trigger del BELL acustico dinamico.
     *   **Hook VBI:** Installa routine di Vertical Blank Interrupt per gestire il lampeggio del cursore e le funzioni metronomo.
     *   **Resilienza al warm start:** Si aggancia ai vettori di reset di sistema (catena `DOSINI`/`CASINI`) per garantire che il driver rimanga attivo e la scheda VERA venga re-inizializzata dopo un reset di sistema.
+    *   **Performance Optimizations:**
+        *   **VERA FX 32-bit Clear/Scroll:** Utilizza il coprocessore FX per accelerare la cancellazione dello schermo e lo scrolling delle righe tramite scritture allineate a 4 byte (32-bit cache), riducendo del 75% l'overhead di I/O sul bus PBI.
+        *   **Sequential Address Caching:** Implementa una "Shadow Address Cache" nella routine `print_literal`. Se i caratteri vengono stampati in sequenza sulla stessa riga, il driver evita di riprogrammare i registri di indirizzamento VRAM (`VERA_ADDR_L/M/H`), incrementando drasticamente la velocità di stampa delle stringhe.
+        *   **VBI-Safe Caching:** La validità della cache dell'indirizzo è protetta tramite un timestamp basato sul clock di sistema (`RTCLOK`), garantendo che interrupt VBI (come il lampeggio del cursore) non causino corruzioni se intervengono durante una sequenza di stampa.
 
 ## Moduli di implementazione principali (vera_pbi_rom/*.s)
 
