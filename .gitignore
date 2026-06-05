@@ -26,3 +26,11 @@ AUTORUN.SYS
 vera_pbi.atr
 .atrbuild/
 .dos20/
+/vera_driver.o
+/vera_stub.o
+/vera_sys_dosini.o
+/vera_sys_es_hook.o
+/vera_sys_font.o
+/vera_sys_loader.o
+/vera_sys_vbi.o
+/vera-tests/sysdetect.o
