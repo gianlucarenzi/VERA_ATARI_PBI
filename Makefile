@@ -87,7 +87,7 @@ all: $(TARGET) $(SYS) drivers
 
 # Rule to generate the three resolution-specific drivers.
 # Each build requires a clean objects pass to ensure correct defines are applied.
-drivers: $(SYS4030) $(SYS8030) $(SYS8060)
+drivers: $(SYS4030) $(SYS8030) $(SYS8060) $(SYS4030)
 
 $(SYS4030):
 	$(MAKE) clean_objs
@@ -237,10 +237,10 @@ $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS: $(DOS20_ATR) $(DOS20_EXTRACT)
 
 # Build a bootable DOS 2.0s ED ATR containing RUNCPM.COM and both
 # VERA8030.SYS (80x30) and VERA8060.SYS (80x60) drivers.
-atr: $(TARGET) $(RUNCPM_EXE) $(SYS8030) $(SYS8060) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
+atr: $(TARGET) $(RUNCPM_EXE) $(SYS8030) $(SYS8060) $(SYS4030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
 	rm -rf $(ATRBUILD)
 	mkdir -p $(ATRBUILD)
-	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(RUNCPM_EXE) $(SYS8030) $(SYS8060) $(ATRBUILD)/
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(RUNCPM_EXE) $(SYS8030) $(SYS8060) $(SYS4030) $(ATRBUILD)/
 	$(DIR2ATR) -E -b Dos20 $(ATR) $(ATRBUILD)
 	@echo "ATR written to $(ATR)"
 	@if [ ! -z "$(FUJINET_SD_PATH)" ]; then \
@@ -256,13 +256,13 @@ clean: clean_objs
 		$(LOADER_LBL) \
 		$(ALL_TEST_EXES) \
 		_TEST.COM _TESTGS.COM _TESTMAZE.COM \
-		$(SYS4030) $(SYS8030) $(SYS8060) \
+		$(SYS4030) $(SYS8030) $(SYS8060) $(SYS4030) \
 		vera-tests/sysdetect.o \
 		.dos20
 
 cleanall: clean
 	rm -rf $(MAPFILE_ROM) $(BODY_MAP_A) $(BODY_MAP_B) $(LOADER_MAP) \
-		$(SYS4030) $(SYS8030) $(SYS8060)
+		$(SYS4030) $(SYS8030) $(SYS8060) $(SYS4030)
 
 install: $(TARGET)
 	@mkdir -p $(ROMDIR)
