@@ -330,23 +330,27 @@ unsigned char nwrite(unsigned char* buf, unsigned short len)
 
 void ring_put(unsigned char c)
 {
+    ENTER_CRITICAL;
     if (count < RING_SIZE)
     {
         ring_buf[head] = c;
         head = (head + 1) % RING_SIZE;
         count++;
     }
+    EXIT_CRITICAL;
 }
 
 unsigned char ring_get(void)
 {
     unsigned char c = 0;
+    ENTER_CRITICAL;
     if (count > 0)
     {
         c = ring_buf[tail];
         tail = (tail + 1) % RING_SIZE;
         count--;
     }
+    EXIT_CRITICAL;
     return c;
 }
 
