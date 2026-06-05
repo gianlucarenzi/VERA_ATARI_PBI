@@ -34,3 +34,6 @@ vera_pbi.atr
 /vera_sys_loader.o
 /vera_sys_vbi.o
 /vera-tests/sysdetect.o
+/FujiNet/fujinet-pc-ATARI/fujinet
+/RUNCPM.COM
+/vera-tests/runcpm.o
