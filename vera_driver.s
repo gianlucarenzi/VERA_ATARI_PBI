@@ -644,6 +644,13 @@ do_clear:
     lda #0                  ; Ensure ADDRSEL=0
     sta VERA_CTRL
 
+    ; --- Optimize: Disable ANTIC DMA during clear ---
+    lda $022F               ; SDMCTL shadow register
+    pha                     ; Save current state
+    lda #0
+    sta $022F               ; Disable DMA (Screen blanked)
+    ; -----------------------------------------------
+
     lda #0
     sta putc_tmp                ; row counter
 @row_loop:
@@ -656,7 +663,7 @@ do_clear:
     lda #VERA_ADDR_H_BASE       ; Bank 1, INC=1
     sta VERA_ADDR_H
 
-    ldy #MAP_COLS               ; 128 tiles × 2 bytes = 256 bytes per row
+    ldy #SCREEN_COLS_VIEW
 @col_loop:
     lda #' '
     sta VERA_DATA0
@@ -667,8 +674,13 @@ do_clear:
 
     inc putc_tmp
     lda putc_tmp
-    cmp #64                     ; Clear all 64 rows of the 128x64 map
+    cmp #SCREEN_ROWS_VIEW       ; Clear only the viewport rows
     bne @row_loop
+
+    ; --- Restore ANTIC DMA ---
+    pla
+    sta $022F
+    ; -------------------------
 
     lda LMARGN
     sta _vera_ctl_block + VERACTL_CURSOR_X
