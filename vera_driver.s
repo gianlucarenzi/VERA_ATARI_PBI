@@ -551,10 +551,20 @@ scroll_up:
     lda #0                      ; Disable ANTIC DMA
     sta DMACTL
 
+    ; --- Enable FX 32-bit cache for fast copying ---
+    lda #VERA_DCSEL2
+    sta VERA_CTRL
+    lda #0
+    sta VERA_FX_MULT            ; Reset cache byte index to 0
+    lda #(FX_CACHE_FILL_EN | FX_CACHE_WR_EN)
+    sta VERA_FX_CTRL
+    ; -----------------------------------------------
+
     lda #0
     sta putc_tmp                ; dest row index
 @row_loop:
-    lda #$00
+    ; Source row (ADDRSEL=0, INC1)
+    lda #VERA_DCSEL0            ; DCSEL=0, ADDRSEL=0
     sta VERA_CTRL
     lda #0
     sta VERA_ADDR_L
@@ -562,11 +572,11 @@ scroll_up:
     clc
     adc #(VERA_SCREEN_BASE_M + 1)
     sta VERA_ADDR_M
-    lda #VERA_ADDR_H_BASE
+    lda #(VERA_INC1 | ^SCREEN_ADDR)
     sta VERA_ADDR_H
 
-    ; DATA1 → write dest row
-    lda #$01
+    ; Dest row (ADDRSEL=1, INC4)
+    lda #(VERA_DCSEL0 | 1)      ; DCSEL=0, ADDRSEL=1
     sta VERA_CTRL
     lda #0
     sta VERA_ADDR_L
@@ -574,38 +584,39 @@ scroll_up:
     clc
     adc #VERA_SCREEN_BASE_M
     sta VERA_ADDR_M
-    lda #VERA_ADDR_H_BASE
+    lda #(VERA_INC4 | ^SCREEN_ADDR)
     sta VERA_ADDR_H
 
-    ldy #(SCREEN_COLS_VIEW * 2 / 8)         ; 160 / 8 = 20 iterations
-@byte_loop:
+    ldy #(SCREEN_COLS_VIEW * 2 / 16)         ; 160 / 16 = 10 iterations
+@dword_loop:
+    .repeat 4
+    lda VERA_DATA0              ; 4x reads fill the 32-bit cache
     lda VERA_DATA0
-    sta VERA_DATA1
     lda VERA_DATA0
-    sta VERA_DATA1
     lda VERA_DATA0
-    sta VERA_DATA1
-    lda VERA_DATA0
-    sta VERA_DATA1
-    lda VERA_DATA0
-    sta VERA_DATA1
-    lda VERA_DATA0
-    sta VERA_DATA1
-    lda VERA_DATA0
-    sta VERA_DATA1
-    lda VERA_DATA0
-    sta VERA_DATA1
+    lda #0
+    sta VERA_DATA1              ; 1x write (mask 0) flushes 32 bits to DST
+    .endrepeat
     dey
-    bne @byte_loop
-
-    ; Back to DATA0 for the next setup.
-    lda #$00
-    sta VERA_CTRL
+    beq @next_row
+    jmp @dword_loop
+@next_row:
 
     inc putc_tmp
     lda putc_tmp
     cmp #(SCREEN_ROWS_VIEW - 1)
-    bne @row_loop
+    beq @done_scroll
+    jmp @row_loop
+@done_scroll:
+
+    ; --- Disable FX and reset ADDRSEL ---
+    lda #VERA_DCSEL2
+    sta VERA_CTRL
+    lda #0
+    sta VERA_FX_CTRL
+    lda #VERA_DCSEL0
+    sta VERA_CTRL
+    ; ------------------------------------
 
     ; Clear the freshly-vacated last row - use simple INC1 for maximum safety
     lda #0
@@ -658,47 +669,64 @@ do_clear:
     sta $022F               ; Disable DMA (Screen blanked)
     ; -----------------------------------------------
 
+    ; --- Setup FX 32-bit cache with ' ' and current attribute ---
+    lda #VERA_DCSEL6
+    sta VERA_CTRL
+    lda #' '
+    sta VERA_FX_CACHE_L
+    lda _vera_ctl_block + VERACTL_PARAM1
+    sta VERA_FX_CACHE_M
+    lda #' '
+    sta VERA_FX_CACHE_H
+    lda _vera_ctl_block + VERACTL_PARAM1
+    sta VERA_FX_CACHE_U
+
+    lda #VERA_DCSEL2
+    sta VERA_CTRL
+    lda #FX_CACHE_WR_EN
+    sta VERA_FX_CTRL
+    ; ---------------------------------------------------
+
     lda #0
     sta putc_tmp                ; row counter
 @row_loop:
-    ; Pass 1: Chars
+    lda #VERA_DCSEL0            ; DCSEL=0, ADDRSEL=0
+    sta VERA_CTRL
     lda #0
     sta VERA_ADDR_L
     lda putc_tmp
     clc
     adc #VERA_SCREEN_BASE_M
     sta VERA_ADDR_M
-    lda #(VERA_INC2 | ^SCREEN_ADDR)
+    lda #(VERA_INC4 | ^SCREEN_ADDR)
     sta VERA_ADDR_H
 
-    lda #' '
-    ldy #SCREEN_COLS_VIEW
-@col_loop1:
-    sta VERA_DATA0
+    ldy #(SCREEN_COLS_VIEW * 2 / 16)         ; 160 / 16 = 10 iterations
+@col_loop:
+    .repeat 4
+    lda #0
+    sta VERA_DATA0              ; Write 4 bytes from cache, ADDR += 4
+    .endrepeat
     dey
-    bne @col_loop1
-
-    ; Pass 2: Colors
-    lda #1
-    sta VERA_ADDR_L
-    lda putc_tmp
-    clc
-    adc #VERA_SCREEN_BASE_M
-    sta VERA_ADDR_M
-    lda #(VERA_INC2 | ^SCREEN_ADDR)
-    sta VERA_ADDR_H
-
-    lda _vera_ctl_block + VERACTL_PARAM1
-    ldy #SCREEN_COLS_VIEW
-@col_loop2:
-    sta VERA_DATA0
-    dey
-    bne @col_loop2
+    beq @next_clear_row
+    jmp @col_loop
+@next_clear_row:
 
     inc putc_tmp
     lda putc_tmp
     cmp #SCREEN_ROWS_VIEW       ; Clear only the viewport rows
-    bne @row_loop
+    beq @done_clear
+    jmp @row_loop
+@done_clear:
+
+    ; --- Disable FX ---
+    lda #VERA_DCSEL2
+    sta VERA_CTRL
+    lda #0
+    sta VERA_FX_CTRL
+    lda #VERA_DCSEL0
+    sta VERA_CTRL
+    ; ------------------
 
     ; --- Restore ANTIC DMA ---
     pla

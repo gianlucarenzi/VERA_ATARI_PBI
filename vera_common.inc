@@ -131,6 +131,10 @@ VERA_FX_ADDR1_LINE      = $01                       ; bits[1:0]=01: Addr1 line-d
 VERA_FX_ADDR1_POLY      = $02                       ; bits[1:0]=10: Addr1 polygon-fill helper
 VERA_FX_ADDR1_AFFINE    = $03                       ; bits[1:0]=11: Addr1 affine-transform helper
 
+; Compat aliases for the driver
+FX_CACHE_WR_EN          = VERA_FX_CACHE_WR_EN
+FX_CACHE_FILL_EN        = VERA_FX_CACHE_FILL_EN
+
 ; ============================================================================
 ; FX_MULT (DCSEL=2, $D10C) bit masks
 ; ============================================================================
