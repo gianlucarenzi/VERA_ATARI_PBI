@@ -83,7 +83,7 @@ BUNDLE_VERA = bundle_vera.py
 .PHONY: all clean cleanall install atr labels drivers clean_objs
 
 # The default target builds the PBI ROM and all three driver versions.
-all: $(TARGET) $(SYS) drivers
+all: $(TARGET) $(SYS) drivers disk1-runcpm.atr disk2-veratests-40x30.atr disk2-veratests-80x30.atr disk2-veratests-80x60.atr
 
 # Rule to generate the three resolution-specific drivers.
 # Each build requires a clean objects pass to ensure correct defines are applied.
@@ -232,6 +232,14 @@ DOS20_EXTRACT = extract_dos20.py
 $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS: $(DOS20_ATR) $(DOS20_EXTRACT)
 	$(PYTHON) $(DOS20_EXTRACT) $(DOS20_ATR) $(DOS20_DIR)
 
+# Helper to copy ATR to FujiNet SD
+define copy_atr_to_fujinet
+	@if [ ! -z "$(FUJINET_SD_PATH)" ]; then \
+		cp $(1) $(FUJINET_SD_PATH)/; \
+		echo "Copied $(1) to $(FUJINET_SD_PATH)"; \
+	fi
+endef
+
 # Build a bootable DOS 2.0s ED ATR containing RUNCPM.COM and both
 # VERA8030.SYS (80x30) and VERA8060.SYS (80x60) drivers.
 atr: $(TARGET) $(RUNCPM_EXE) $(SYS8030) $(SYS8060) $(SYS4030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
@@ -240,10 +248,31 @@ atr: $(TARGET) $(RUNCPM_EXE) $(SYS8030) $(SYS8060) $(SYS4030) $(DOS20_DIR)/DOS.S
 	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(RUNCPM_EXE) $(SYS8030) $(SYS8060) $(SYS4030) $(ATRBUILD)/
 	$(DIR2ATR) -E -b Dos20 $(ATR) $(ATRBUILD)
 	@echo "ATR written to $(ATR)"
-	@if [ ! -z "$(FUJINET_SD_PATH)" ]; then \
-		cp $(ATR) $(FUJINET_SD_PATH)/; \
-		echo "ATR copied to $(FUJINET_SD_PATH)"; \
-	fi
+	$(call copy_atr_to_fujinet,$(ATR))
+
+disk1-runcpm.atr: $(RUNCPM_EXE) $(SYS8030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
+	mkdir -p .atrbuild/disk1
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(RUNCPM_EXE) $(SYS8030) .atrbuild/disk1/
+	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk1
+	$(call copy_atr_to_fujinet,$@)
+
+disk2-veratests-40x30.atr: TEST4.COM TESTGS4.COM TESTMAZ4.COM $(SYS4030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
+	mkdir -p .atrbuild/disk2_4030
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST4.COM TESTGS4.COM TESTMAZ4.COM $(SYS4030) .atrbuild/disk2_4030/
+	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk2_4030
+	$(call copy_atr_to_fujinet,$@)
+
+disk2-veratests-80x30.atr: TEST8.COM TESTGS8.COM TESTMAZ8.COM $(SYS8030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
+	mkdir -p .atrbuild/disk2_8030
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST8.COM TESTGS8.COM TESTMAZ8.COM $(SYS8030) .atrbuild/disk2_8030/
+	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk2_8030
+	$(call copy_atr_to_fujinet,$@)
+
+disk2-veratests-80x60.atr: TEST6.COM TESTGS6.COM TESTMAZ6.COM $(SYS8060) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
+	mkdir -p .atrbuild/disk2_8060
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST6.COM TESTGS6.COM TESTMAZ6.COM $(SYS8060) .atrbuild/disk2_8060/
+	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk2_8060
+	$(call copy_atr_to_fujinet,$@)
 
 # === Cleanup ================================================================
 
