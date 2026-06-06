@@ -25,6 +25,7 @@ Il progetto è composto da due componenti principali, entrambi nella directory `
     *   **`VERA4030.SYS`**: 40x30 caratteri (risoluzione 320x240 con scaling 2x, font 8x8).
 *   **Funzionalità:**
     *   **Installazione:** Si aggancia alla HATABS (Handler Address Table) per sostituire gli handler standard dei dispositivi Editor (`E:`) e Screen (`S:`) con versioni abilitate per VERA.
+    *   **Gestione OPEN:** Gli handler di apertura (`OPEN`) per `E:` e `S:` eseguono automaticamente una pulizia completa dello schermo tramite `do_clear`. Questo garantisce che comandi BASIC come `GRAPHICS 0` puliscano correttamente il display VERA.
     *   **Gestione PUTC:** Sostituisce le routine CIO PUT BYTE standard con una state machine custom che renderizza testo ATASCII direttamente nella VRAM di VERA, bypassando la memoria video ANTIC/GTIA originale. Supporta risoluzioni multiple e scaling hardware.
     *   **Riga Logica Dinamica:** Gestisce righe logiche di lunghezza variabile (fino a 3 righe fisiche in modalità 40 colonne) e trigger del BELL acustico dinamico.
     *   **Hook VBI:** Installa routine di Vertical Blank Interrupt per gestire il lampeggio del cursore e le funzioni metronomo.

@@ -30,6 +30,7 @@
     .import _vera_trigger_click
     .import _vera_cursor_invalidate
     .import __VERA_EXPORTS__
+    .import do_clear
 
 
     .include "vera_common.inc"
@@ -560,6 +561,7 @@ vera_editor_open:
     sta LMARGN
     lda #SCREEN_COLS_VIEW - 1
     sta RMARGN
+    jsr do_clear                ; clear VERA screen on OPEN (GRAPHICS 0)
     ldy #1
     rts
 
@@ -572,6 +574,7 @@ vera_screen_open:
     sta LMARGN
     lda #SCREEN_COLS_VIEW - 1
     sta RMARGN
+    jsr do_clear                ; clear VERA screen on OPEN
     ldy #1
     rts
 

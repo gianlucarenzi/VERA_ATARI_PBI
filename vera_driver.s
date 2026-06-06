@@ -6,7 +6,7 @@
 
     .setcpu "6502"
 
-    .export _vera_warm_reinit, _vera_hw_reinit, _vera_wait_and_clear, _CallVeraApiService, _VeraApiService
+    .export _vera_warm_reinit, _vera_hw_reinit, _vera_wait_and_clear, _CallVeraApiService, _VeraApiService, do_clear
     .import _vera_x16_font, _vera_ctl_block
     .import _vera_cursor_invalidate, cursor_draw, cursor_at_x, cursor_at_y, cursor_enabled
     .import _vera_trigger_click, _vera_scroll_hook
