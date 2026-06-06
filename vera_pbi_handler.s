@@ -53,22 +53,36 @@ VER_LINE_ADDR   = SCREEN_ADDR + (1 * MAP_COLS * 2) + (2 * 2)
 HOST_LINE_ADDR  = SCREEN_ADDR + (3 * MAP_COLS * 2) + (2 * 2)
 
 .macro PRINT_LINE addr, label
-    .local CopyChar, Done
+    .local CopyChar, CopyColor, Done
     lda #<(addr)
     sta VERA_ADDR_L
     lda #>(addr)
     sta VERA_ADDR_M
-    lda #(VERA_INC1 | ^(addr))
+    lda #(VERA_INC2 | ^(addr))
     sta VERA_ADDR_H
     ldx #0
 CopyChar:
     lda label,x
-    beq Done
-    sta VERA_DATA0
-    lda #TEXT_COLOR
+    beq DoneChar
     sta VERA_DATA0
     inx
     bne CopyChar
+DoneChar:
+    stx TMP1                    ; Save character count
+    lda #<(addr+1)
+    sta VERA_ADDR_L
+    lda #>(addr+1)
+    sta VERA_ADDR_M
+    lda #(VERA_INC2 | ^(addr+1))
+    sta VERA_ADDR_H
+    lda #TEXT_COLOR
+@CopyColor:
+    ldx TMP1
+    beq Done
+@Loop:
+    sta VERA_DATA0
+    dex
+    bne @Loop
 Done:
 .endmacro
 
@@ -212,24 +226,43 @@ CLEAR_SCREEN:
     pha
     lda #0
     sta DMACTL                  ; Disable ANTIC DMA
+
+    ; Pass 1: Fill characters with ' '
     lda #<SCREEN_ADDR
     sta VERA_ADDR_L
     lda #>SCREEN_ADDR
     sta VERA_ADDR_M
-    lda #(VERA_INC1 | ^SCREEN_ADDR)
+    lda #(VERA_INC2 | ^SCREEN_ADDR)
     sta VERA_ADDR_H
-    ldy #MAP_ROWS
-@Row:
-    ldx #MAP_COLS
-@Col:
     lda #' '
-    sta VERA_DATA0
-    lda #TEXT_COLOR
+    ldy #MAP_ROWS
+@Row1:
+    ldx #MAP_COLS
+@Col1:
     sta VERA_DATA0
     dex
-    bne @Col
+    bne @Col1
     dey
-    bne @Row
+    bne @Row1
+
+    ; Pass 2: Fill attributes with TEXT_COLOR
+    lda #<(SCREEN_ADDR+1)
+    sta VERA_ADDR_L
+    lda #>(SCREEN_ADDR+1)
+    sta VERA_ADDR_M
+    lda #(VERA_INC2 | ^(SCREEN_ADDR+1))
+    sta VERA_ADDR_H
+    lda #TEXT_COLOR
+    ldy #MAP_ROWS
+@Row2:
+    ldx #MAP_COLS
+@Col2:
+    sta VERA_DATA0
+    dex
+    bne @Col2
+    dey
+    bne @Row2
+
     pla                         ; Restore ANTIC DMA state
     sta DMACTL
     rts

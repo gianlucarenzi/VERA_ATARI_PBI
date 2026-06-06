@@ -604,20 +604,33 @@ scroll_up:
     bne @row_loop
 
     ; Clear the freshly-vacated last row.
+    ; Pass 1: Chars
     lda #0
     sta VERA_ADDR_L
     lda #(VERA_SCREEN_BASE_M + SCREEN_ROWS_VIEW - 1)
     sta VERA_ADDR_M
-    lda #VERA_ADDR_H_BASE
+    lda #(VERA_INC2 | ^SCREEN_ADDR)
     sta VERA_ADDR_H
-    ldy #SCREEN_COLS_VIEW
-@clear_loop:
     lda #' '
-    sta VERA_DATA0
-    lda _vera_ctl_block + VERACTL_PARAM1
+    ldy #SCREEN_COLS_VIEW
+@clear_loop1:
     sta VERA_DATA0
     dey
-    bne @clear_loop
+    bne @clear_loop1
+
+    ; Pass 2: Colors
+    lda #1
+    sta VERA_ADDR_L
+    lda #(VERA_SCREEN_BASE_M + SCREEN_ROWS_VIEW - 1)
+    sta VERA_ADDR_M
+    lda #(VERA_INC2 | ^SCREEN_ADDR)
+    sta VERA_ADDR_H
+    lda _vera_ctl_block + VERACTL_PARAM1
+    ldy #SCREEN_COLS_VIEW
+@clear_loop2:
+    sta VERA_DATA0
+    dey
+    bne @clear_loop2
 
     pla                         ; Restore ANTIC DMA state
     sta DMACTL
@@ -654,23 +667,39 @@ do_clear:
     lda #0
     sta putc_tmp                ; row counter
 @row_loop:
+    ; Pass 1: Chars
     lda #0
     sta VERA_ADDR_L
     lda putc_tmp
     clc
     adc #VERA_SCREEN_BASE_M
     sta VERA_ADDR_M
-    lda #VERA_ADDR_H_BASE       ; Bank 1, INC=1
+    lda #(VERA_INC2 | ^SCREEN_ADDR)
     sta VERA_ADDR_H
 
-    ldy #SCREEN_COLS_VIEW
-@col_loop:
     lda #' '
-    sta VERA_DATA0
-    lda _vera_ctl_block + VERACTL_PARAM1
+    ldy #SCREEN_COLS_VIEW
+@col_loop1:
     sta VERA_DATA0
     dey
-    bne @col_loop
+    bne @col_loop1
+
+    ; Pass 2: Colors
+    lda #1
+    sta VERA_ADDR_L
+    lda putc_tmp
+    clc
+    adc #VERA_SCREEN_BASE_M
+    sta VERA_ADDR_M
+    lda #(VERA_INC2 | ^SCREEN_ADDR)
+    sta VERA_ADDR_H
+
+    lda _vera_ctl_block + VERACTL_PARAM1
+    ldy #SCREEN_COLS_VIEW
+@col_loop2:
+    sta VERA_DATA0
+    dey
+    bne @col_loop2
 
     inc putc_tmp
     lda putc_tmp
