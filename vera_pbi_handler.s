@@ -381,27 +381,29 @@ PRINT_HOST_LINE:
     lda RAMTOP
     cmp #$80
     bcs HostMaybeXE
-    lda #<Host600XL
+    lda #<HostLowMemoryError
     sta TMP_PTR_LO
-    lda #>Host600XL
+    lda #>HostLowMemoryError
     sta TMP_PTR_HI
     lda #TEXT_COLOR
     sta TMP0
-    jmp PRINT_PTR
+    jsr PRINT_PTR
+@loop:
+    jmp @loop
 HostMaybeXE:
     jsr HAS_XE_BANK
     bcc HostNoXE
-    lda #<Host130XE
+    lda #<Host130XE_Str
     sta TMP_PTR_LO
-    lda #>Host130XE
+    lda #>Host130XE_Str
     sta TMP_PTR_HI
     lda #TEXT_COLOR
     sta TMP0
     jmp PRINT_PTR
 HostNoXE:
-    lda #<Host800XL
+    lda #<Host800XL_Str
     sta TMP_PTR_LO
-    lda #>Host800XL
+    lda #>Host800XL_Str
     sta TMP_PTR_HI
     lda #TEXT_COLOR
     sta TMP0
@@ -461,12 +463,12 @@ NONEED:
 
 VersionPrefix:
     .asciiz "VERA MODULE FW:"
-Host600XL:
-    .asciiz "ATARI 600XL"
-Host800XL:
-    .asciiz "ATARI 800XL"
-Host130XE:
-    .asciiz "ATARI 130XE"
+HostLowMemoryError:
+    .asciiz "LOW MEMORY ERROR"
+Host800XL_Str:
+    .asciiz "ATARI XL"
+Host130XE_Str:
+    .asciiz "ATARI XE"
 
 ; Boot font: 27 chars x 9 bytes = 243 bytes.
 ; Only the characters actually used by the boot banner text.
