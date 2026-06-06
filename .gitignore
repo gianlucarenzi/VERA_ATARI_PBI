@@ -41,10 +41,7 @@ vera_pbi.atr
 /VERA4030.SYS
 /VERA8060.SYS
 /atari800
-/FujiNet/fujinet-pc-ATARI/SD/disk1-runcpm.atr
-/FujiNet/fujinet-pc-ATARI/SD/disk2-veratests-40x30.atr
-/FujiNet/fujinet-pc-ATARI/SD/disk2-veratests-80x30.atr
-/FujiNet/fujinet-pc-ATARI/SD/disk2-veratests-80x60.atr
+/FujiNet/fujinet-pc-ATARI/SD/*.atr
 /TEST4.COM
 /TEST6.COM
 /TEST8.COM
@@ -64,4 +61,6 @@ vera_pbi.atr
 /vera-tests/test_font.o
 /vera-tests/test_gradient_scroll.o
 /vera-tests/test_maze.o
+/vera-tests/test_fx.o
+/TESTFX.COM
 /FujiNet/fujinet-pc-ATARI/fnconfig.ini
