@@ -27,9 +27,6 @@ VERA_INVERSE_COLOR  = $16           ; swap nibbles of $61: BG=1 white, FG=6 blue
 putc_tmp:           .res 1
 ; Inverse-video flag set by print_literal, used by clear-row helpers.
 putc_inverse:       .res 1
-; Cache for VERA address validity during sequential printing.
-putc_addr_valid:    .res 1
-putc_vbi_timestamp: .res 1
 save_nmien:         .res 1
 first_init:         .res 1
 wait_target:        .res 1      ; RTCLOK+2 frame-count target for _vera_wait_and_clear
@@ -466,17 +463,6 @@ _VeraPutByte:
 
 print_literal:
     pha
-    lda putc_addr_valid
-    beq @set_addr
-    lda RTCLOK+2
-    cmp putc_vbi_timestamp
-    bne @set_addr
-    ; Shadow valid: skip VERA_ADDR setup, just ensure DATA0 port
-    lda #$00
-    sta VERA_CTRL
-    jmp @write_data
-
-@set_addr:
     lda #$00
     sta VERA_CTRL
     lda _vera_ctl_block + VERACTL_CURSOR_X
@@ -488,8 +474,6 @@ print_literal:
     sta VERA_ADDR_M
     lda #VERA_ADDR_H_BASE
     sta VERA_ADDR_H
-
-@write_data:
     pla
     sta VERA_DATA0
     ; Choose normal or inverse color based on putc_inverse flag.
@@ -521,17 +505,9 @@ print_literal:
     inc _vera_ctl_block + VERACTL_CURSOR_X
     lda _vera_ctl_block + VERACTL_CURSOR_X
     cmp #SCREEN_COLS_VIEW
-    bcc @ok
-    ; Row wrap: invalidate sequential address cache
-    lda #0
-    sta putc_addr_valid
+    bcc @done
     jsr cr_lf
-    rts
-@ok:
-    lda #1
-    sta putc_addr_valid
-    lda RTCLOK+2
-    sta putc_vbi_timestamp
+@done:
     rts
 
 
@@ -566,24 +542,15 @@ cr_lf:
 scroll_up:
     jsr _vera_scroll_hook       ; keep E: logical-line tracking in sync
     jsr _vera_cursor_invalidate
-    lda #0
-    sta putc_addr_valid     ; Invalidate sequential addr cache
     lda DMACTL                  ; Save ANTIC DMA state
     pha
     lda #0                      ; Disable ANTIC DMA
     sta DMACTL
 
-    ; Enable FX cache fill (DATA0) and cache write (DATA1)
-    lda #VERA_DCSEL2
-    sta VERA_CTRL
-    lda #(VERA_FX_CACHE_FILL_EN | VERA_FX_CACHE_WR_EN)
-    sta VERA_FX_CTRL
-
     lda #0
     sta putc_tmp                ; dest row index
 @row_loop:
-    ; ADDR0 = source row (putc_tmp + 1), increment 1
-    lda #VERA_DCSEL0            ; ADDRSEL = 0
+    lda #$00
     sta VERA_CTRL
     lda #0
     sta VERA_ADDR_L
@@ -592,10 +559,10 @@ scroll_up:
     adc #(VERA_SCREEN_BASE_M + 1)
     sta VERA_ADDR_M
     lda #VERA_ADDR_H_BASE
-    sta VERA_ADDR_H             ; Increment 1
+    sta VERA_ADDR_H
 
-    ; ADDR1 = dest row (putc_tmp), increment 4
-    lda #1                      ; ADDRSEL = 1
+    ; DATA1 → write dest row
+    lda #$01
     sta VERA_CTRL
     lda #0
     sta VERA_ADDR_L
@@ -603,65 +570,54 @@ scroll_up:
     clc
     adc #VERA_SCREEN_BASE_M
     sta VERA_ADDR_M
-    lda #(VERA_INC4 | SCREEN_ADDR_BANK)
-    sta VERA_ADDR_H             ; Increment 4
+    lda #VERA_ADDR_H_BASE
+    sta VERA_ADDR_H
 
-    ldy #(SCREEN_COLS_VIEW * 2 / 4)         ; 160 / 4 = 40 iterations
+    ldy #(SCREEN_COLS_VIEW * 2 / 8)         ; 160 / 8 = 20 iterations
 @byte_loop:
-    lda VERA_DATA0               ; fill cache byte 0
-    lda VERA_DATA0               ; fill cache byte 1
-    lda VERA_DATA0               ; fill cache byte 2
-    lda VERA_DATA0               ; fill cache byte 3
-    lda #0
-    sta VERA_DATA1               ; write cache to dest row
+    lda VERA_DATA0
+    sta VERA_DATA1
+    lda VERA_DATA0
+    sta VERA_DATA1
+    lda VERA_DATA0
+    sta VERA_DATA1
+    lda VERA_DATA0
+    sta VERA_DATA1
+    lda VERA_DATA0
+    sta VERA_DATA1
+    lda VERA_DATA0
+    sta VERA_DATA1
+    lda VERA_DATA0
+    sta VERA_DATA1
+    lda VERA_DATA0
+    sta VERA_DATA1
     dey
     bne @byte_loop
+
+    ; Back to DATA0 for the next setup.
+    lda #$00
+    sta VERA_CTRL
 
     inc putc_tmp
     lda putc_tmp
     cmp #(SCREEN_ROWS_VIEW - 1)
     bne @row_loop
 
-    ; Clear the freshly-vacated last row using the same 32-bit cache trick.
-    ; Cache is currently filled with the last row's data; we must refill it with ' ' + color.
-    lda #VERA_DCSEL2
-    sta VERA_CTRL
-    lda #VERA_FX_CACHE_WR_EN    ; Disable fill, keep write enable
-    sta VERA_FX_CTRL
-    lda #VERA_DCSEL6
-    sta VERA_CTRL
-    lda #' '
-    sta VERA_FX_CACHE_L
-    lda _vera_ctl_block + VERACTL_PARAM1
-    sta VERA_FX_CACHE_M
-    lda #' '
-    sta VERA_FX_CACHE_H
-    lda _vera_ctl_block + VERACTL_PARAM1
-    sta VERA_FX_CACHE_U
-
-    lda #VERA_DCSEL0            ; ADDRSEL = 0
-    sta VERA_CTRL
+    ; Clear the freshly-vacated last row.
     lda #0
     sta VERA_ADDR_L
     lda #(VERA_SCREEN_BASE_M + SCREEN_ROWS_VIEW - 1)
     sta VERA_ADDR_M
-    lda #(VERA_INC4 | SCREEN_ADDR_BANK)
+    lda #VERA_ADDR_H_BASE
     sta VERA_ADDR_H
-
-    ldy #(SCREEN_COLS_VIEW * 2 / 4)
+    ldy #SCREEN_COLS_VIEW
 @clear_loop:
-    lda #0
+    lda #' '
+    sta VERA_DATA0
+    lda _vera_ctl_block + VERACTL_PARAM1
     sta VERA_DATA0
     dey
     bne @clear_loop
-
-    ; Reset FX
-    lda #VERA_DCSEL2
-    sta VERA_CTRL
-    lda #0
-    sta VERA_FX_CTRL
-    lda #VERA_DCSEL0
-    sta VERA_CTRL
 
     pla                         ; Restore ANTIC DMA state
     sta DMACTL
@@ -673,8 +629,6 @@ scroll_up:
 ; ----------------------------------------------------------------------------
 
 do_eol:
-    lda #0
-    sta putc_addr_valid
     jsr cr_lf
     rts
 
@@ -687,45 +641,27 @@ do_clear:
     lda #1
     sta CRITIC              ; block deferred VBI so cursor blinker can't race VERA_CTRL
     jsr _vera_cursor_invalidate
-    lda #0
-    sta putc_addr_valid     ; Invalidate sequential addr cache
-
-    ; Enable FX 32-bit cache write
-    lda #VERA_DCSEL2
+    lda #0                  ; Ensure ADDRSEL=0
     sta VERA_CTRL
-    lda #VERA_FX_CACHE_WR_EN
-    sta VERA_FX_CTRL
-
-    ; Fill cache with [char, color, char, color]
-    lda #VERA_DCSEL6
-    sta VERA_CTRL
-    lda #' '
-    sta VERA_FX_CACHE_L
-    lda _vera_ctl_block + VERACTL_PARAM1
-    sta VERA_FX_CACHE_M
-    lda #' '
-    sta VERA_FX_CACHE_H
-    lda _vera_ctl_block + VERACTL_PARAM1
-    sta VERA_FX_CACHE_U
 
     lda #0
     sta putc_tmp                ; row counter
 @row_loop:
-    lda #VERA_DCSEL0            ; Ensure ADDRSEL=0
-    sta VERA_CTRL
     lda #0
     sta VERA_ADDR_L
     lda putc_tmp
     clc
     adc #VERA_SCREEN_BASE_M
     sta VERA_ADDR_M
-    lda #(VERA_INC4 | SCREEN_ADDR_BANK) ; Increment by 4
+    lda #VERA_ADDR_H_BASE       ; Bank 1, INC=1
     sta VERA_ADDR_H
 
-    ldy #(MAP_COLS * 2 / 4)     ; 256 bytes / 4 = 64 writes
+    ldy #MAP_COLS               ; 128 tiles × 2 bytes = 256 bytes per row
 @col_loop:
-    lda #0
-    sta VERA_DATA0              ; Write 32-bit cache (4 bytes)
+    lda #' '
+    sta VERA_DATA0
+    lda _vera_ctl_block + VERACTL_PARAM1
+    sta VERA_DATA0
     dey
     bne @col_loop
 
@@ -733,14 +669,6 @@ do_clear:
     lda putc_tmp
     cmp #64                     ; Clear all 64 rows of the 128x64 map
     bne @row_loop
-
-    ; Reset FX
-    lda #VERA_DCSEL2
-    sta VERA_CTRL
-    lda #0
-    sta VERA_FX_CTRL
-    lda #VERA_DCSEL0
-    sta VERA_CTRL
 
     lda LMARGN
     sta _vera_ctl_block + VERACTL_CURSOR_X
@@ -758,8 +686,6 @@ do_clear:
 ; ----------------------------------------------------------------------------
 
 do_backspace:
-    lda #0
-    sta putc_addr_valid
     lda _vera_ctl_block + VERACTL_CURSOR_X
     cmp LMARGN
     beq @done
@@ -799,8 +725,6 @@ do_esc:
 ; ----------------------------------------------------------------------------
 
 do_cursor_up:
-    lda #0
-    sta putc_addr_valid
     lda _vera_ctl_block + VERACTL_CURSOR_Y
     beq @done
     dec _vera_ctl_block + VERACTL_CURSOR_Y
@@ -808,8 +732,6 @@ do_cursor_up:
     rts
 
 do_cursor_down:
-    lda #0
-    sta putc_addr_valid
     lda _vera_ctl_block + VERACTL_CURSOR_Y
     cmp #(SCREEN_ROWS_VIEW - 1)
     bcs @done
@@ -818,8 +740,6 @@ do_cursor_down:
     rts
 
 do_cursor_left:
-    lda #0
-    sta putc_addr_valid
     lda _vera_ctl_block + VERACTL_CURSOR_X
     cmp LMARGN
     beq @done
@@ -828,8 +748,6 @@ do_cursor_left:
     rts
 
 do_cursor_right:
-    lda #0
-    sta putc_addr_valid
     lda _vera_ctl_block + VERACTL_CURSOR_X
     cmp #(SCREEN_COLS_VIEW - 1)
     bcs @done
@@ -852,8 +770,6 @@ do_bell:
 ; ----------------------------------------------------------------------------
 
 do_tab:
-    lda #0
-    sta putc_addr_valid
     lda _vera_ctl_block + VERACTL_CURSOR_X
     clc
     adc #8
@@ -1098,8 +1014,6 @@ do_delete_char:
 ; ----------------------------------------------------------------------------
 
 do_insert_char:
-    lda #0
-    sta putc_addr_valid
     jsr _vera_cursor_invalidate
     lda #(SCREEN_COLS_VIEW - 2)
     sta putc_tmp

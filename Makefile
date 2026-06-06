@@ -201,18 +201,15 @@ RUNCPM_SRC = vera-tests/runcpm.c
 RUNCPM_EXE = RUNCPM.COM
 RUNCPM80_EXE = RUNCPM80.COM
 
-$(RUNCPM_EXE): $(RUNCPM_SRC) vera-tests/serterm_handler.o vera-tests/sysdetect.o vera_sys_font.o
+$(RUNCPM_EXE): $(RUNCPM_SRC) vera-tests/serterm_handler.o vera_sys_font.o
 	# Load RUNCPM low enough to fit even if resident drivers (VERA/FujiNet/etc.) lower MEMTOP.
 	# Use a cc65 cfg without the SYSCHK chunk at $2E00.
-	cl65 -t atari -C vera-tests/atari_nosyschk.cfg --start-addr 0x3000 -o $(RUNCPM_EXE) $(RUNCPM_SRC) vera-tests/serterm_handler.o vera-tests/sysdetect.o vera_sys_font.o
+	cl65 -t atari -C vera-tests/atari_nosyschk.cfg --start-addr 0x3000 -o $(RUNCPM_EXE) $(RUNCPM_SRC) vera-tests/serterm_handler.o vera_sys_font.o
 
 $(RUNCPM80_EXE): $(RUNCPM_EXE) $(SYS8030) $(BUNDLE_VERA)
 	$(PYTHON) $(BUNDLE_VERA) $(SYS8030) $(RUNCPM_EXE) $(RUNCPM80_EXE)
 
 vera-tests/serterm_handler.o: vera-tests/serterm_handler.s
-	$(CA65) -I . -o $@ $<
-
-vera-tests/sysdetect.o: vera-tests/sysdetect.s
 	$(CA65) -I . -o $@ $<
 
 $(TEST_FX_EXE): $(TEST_FX_SRC)
@@ -256,13 +253,12 @@ clean: clean_objs
 		$(LOADER_LBL) \
 		$(ALL_TEST_EXES) \
 		_TEST.COM _TESTGS.COM _TESTMAZE.COM \
-		$(SYS4030) $(SYS8030) $(SYS8060) $(SYS4030) \
-		vera-tests/sysdetect.o \
+		$(SYS4030) $(SYS8030) $(SYS8060) \
 		.dos20
 
 cleanall: clean
 	rm -rf $(MAPFILE_ROM) $(BODY_MAP_A) $(BODY_MAP_B) $(LOADER_MAP) \
-		$(SYS4030) $(SYS8030) $(SYS8060) $(SYS4030)
+		$(SYS4030) $(SYS8030) $(SYS8060)
 
 install: $(TARGET)
 	@mkdir -p $(ROMDIR)

@@ -1352,28 +1352,6 @@ static void kb_send(void)
 
 /*
  * ============================================================================
- * SYSTEM DETECTION  (implemented in vera-tests/sysdetect.s)
- * ============================================================================
- */
-
-/* detect_machine: 0=Atari 600XL, 1=Atari 800XL, 2=Atari 130XE.
- * Logic identical to HAS_XE_BANK + RAMTOP check in vera_pbi_handler.s. */
-extern unsigned char detect_machine(void);
-
-/* detect_pal: 0=NTSC (1.79 MHz), 1=PAL (1.77 MHz).
- * Hardware-based: reads ANTIC VCOUNT over one full frame. */
-extern unsigned char detect_pal(void);
-
-/* Print a decimal byte (0-255) via terminal_putc, no leading zeros. */
-static void print_dec(unsigned char n)
-{
-    if (n >= 100) terminal_putc((unsigned char)('0' + (unsigned char)(n / 100u)));
-    if (n >= 10)  terminal_putc((unsigned char)('0' + (unsigned char)((n / 10u) % 10u)));
-    terminal_putc((unsigned char)('0' + (unsigned char)(n % 10u)));
-}
-
-/*
- * ============================================================================
  * MAIN TERMINAL LOOP
  * ============================================================================
  */
@@ -1399,6 +1377,12 @@ int main(void)
     {
         *(volatile unsigned char*)0x022F = 0x00;   /* SDMCTL = 0 */
     }
+    else
+    {
+        /* White Characters on Blue Background */
+        *(volatile unsigned char*)0x02C5 = 0xFF;
+        *(volatile unsigned char*)0x02C6 = 0x84;
+    }
 
     /* Helper: set VERA text color directly (fg/bg are VERA palette indices). */
 #define SET_COLOR(fg, bg) do { if (vctl) vctl[VCTL_PARAM1] = (unsigned char)(((bg)<<4)|(fg)); } while(0)
@@ -1412,50 +1396,44 @@ int main(void)
     /* Logo from vera_logo_editor (logo.x16.h).
      * draw_logo writes cursor+color directly to the VCTL block and calls
      * putchar() for each glyph — no VT100 parsing, full 256-char VERA set. */
-    draw_logo(vctl);
-
+    if (vctl)
+    {
+        draw_logo(vctl);
+    }
+    else
+    {
+        P("  ****  ATARI COMPUTERS ****\n");
+    }
     /* atari@VERA-X16 header */
     SET_COLOR(1, 6);   P("  atari");
     SET_COLOR(14, 6);  P("@");
-    SET_COLOR(3, 6);   P("VERA-X16\r\n");
+    if (vctl)
+    {
+        SET_COLOR(3, 6);   P("VERA-X16\r\n");
+    }
+    else
+    {
+        P("ANTIC VIDEO MODE\n");
+    }
+
     SET_COLOR(11, 6);  P("  --------------------------\r\n");
 
-    {
-        unsigned char _mtype = detect_machine();
-        unsigned char _ispal = detect_pal();
-        unsigned char _cols  = term_cols();
-        unsigned char _rows  = term_rows();
-
-        SET_COLOR(14, 6);  P("  Host:     ");
-        SET_COLOR(1, 6);
-        switch (_mtype) {
-            case 0:  P("Atari 600XL"); break;
-            case 1:  P("Atari 800XL"); break;
-            default: P("Atari 130XE"); break;
-        }
-        P("\r\n");
-
-        SET_COLOR(14, 6);  P("  Display:  ");
-        SET_COLOR(1, 6);
-        if (vctl) { P("VERA X16 PBI  "); } else { P("Atari S:      "); }
-        print_dec(_cols); terminal_putc('x'); print_dec(_rows);
-        if (vctl) { P("  VGA"); }
-        P("\r\n");
-
-        SET_COLOR(14, 6);  P("  CPU:      ");
-        SET_COLOR(1, 6);
-        P(_ispal ? "MOS 6502 @ 1.77 MHz PAL" : "MOS 6502 @ 1.79 MHz NTSC");
-        P("\r\n");
-    }
-    SET_COLOR(14, 6);  P("  Terminal: "); SET_COLOR(1, 6); P("VT52 / VT100 / ANSI\r\n");
-    SET_COLOR(14, 6);  P("  Network:  "); SET_COLOR(1, 6); P("FujiNet SIO  N:CPM:///\r\n");
-
     /* Color swatches — 8 normal + 8 bright backgrounds */
-    SET_COLOR(14, 6);  P("  Colors:   ");
-    { unsigned char ci;
-      for (ci = 0; ci < 8; ++ci)  { SET_COLOR(1, ci);    P(" "); }
-      P(" ");
-      for (ci = 8; ci < 16; ++ci) { SET_COLOR(0, ci);    P(" "); }
+    if (vctl)
+    {
+        unsigned char ci;
+        SET_COLOR(14, 6);  P("  Colors:   ");
+        for (ci = 0; ci < 8; ++ci)
+        {
+            SET_COLOR(1, ci);
+            P(" ");
+        }
+        P(" ");
+        for (ci = 8; ci < 16; ++ci)
+        {
+            SET_COLOR(0, ci);
+            P(" ");
+        }
     }
     SET_COLOR(1, 6);   P("\r\n\r\n");
 
