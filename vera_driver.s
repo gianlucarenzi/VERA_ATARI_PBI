@@ -542,6 +542,10 @@ cr_lf:
 scroll_up:
     jsr _vera_scroll_hook       ; keep E: logical-line tracking in sync
     jsr _vera_cursor_invalidate
+    
+    lda #1
+    sta CRITIC                  ; block deferred VBI to prevent VERA register corruption
+
     lda DMACTL                  ; Save ANTIC DMA state
     pha
     lda #0                      ; Disable ANTIC DMA
@@ -603,37 +607,27 @@ scroll_up:
     cmp #(SCREEN_ROWS_VIEW - 1)
     bne @row_loop
 
-    ; Clear the freshly-vacated last row.
-    ; Pass 1: Chars
+    ; Clear the freshly-vacated last row - use simple INC1 for maximum safety
     lda #0
     sta VERA_ADDR_L
     lda #(VERA_SCREEN_BASE_M + SCREEN_ROWS_VIEW - 1)
     sta VERA_ADDR_M
-    lda #(VERA_INC2 | ^SCREEN_ADDR)
+    lda #VERA_ADDR_H_BASE
     sta VERA_ADDR_H
+    ldy #SCREEN_COLS_VIEW
+@clear_loop:
     lda #' '
-    ldy #SCREEN_COLS_VIEW
-@clear_loop1:
     sta VERA_DATA0
-    dey
-    bne @clear_loop1
-
-    ; Pass 2: Colors
-    lda #1
-    sta VERA_ADDR_L
-    lda #(VERA_SCREEN_BASE_M + SCREEN_ROWS_VIEW - 1)
-    sta VERA_ADDR_M
-    lda #(VERA_INC2 | ^SCREEN_ADDR)
-    sta VERA_ADDR_H
     lda _vera_ctl_block + VERACTL_PARAM1
-    ldy #SCREEN_COLS_VIEW
-@clear_loop2:
     sta VERA_DATA0
     dey
-    bne @clear_loop2
+    bne @clear_loop
 
     pla                         ; Restore ANTIC DMA state
     sta DMACTL
+    
+    lda #0
+    sta CRITIC
     rts
 
 
