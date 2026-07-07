@@ -79,6 +79,14 @@ VERA_LAYER1_EN          = $20                       ; DC_VIDEO: enable layer 1
 VERA_MAP_128x64         = $60                       ; L1_CONFIG: 128-wide × 64-tall tilemap
 
 ; ============================================================================
+; VERA audio — PSG voice registers live in VRAM at $1F9C0-$1F9FF (16 voices,
+; 4 bytes each): +0/+1 freq lo/hi, +2 pan+volume, +3 waveform+pulse width.
+; ============================================================================
+
+VERA_PSG_BASE           = $01F9C0                   ; PSG voice 0 register base in VRAM
+VERA_PSG_VOICE_SIZE     = 4                         ; bytes per PSG voice
+
+; ============================================================================
 ; FX coprocessor — register addresses at $D109-$D10C, muxed by CTRL[DCSEL]
 ; Usage pattern: sta VERA_CTRL_REG with the DCSEL value, then access the
 ; physical address.  All four addresses are shared across DCSEL banks 2-6.

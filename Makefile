@@ -169,12 +169,32 @@ TEST_FX_SRC   = vera-tests/test_fx.c
 TEST_FX_EXE   = TESTFX.COM
 TEST_MTX_SRC  = vera-tests/test_matrix.c
 
+# --- VTM PSG music player test (standalone, no VERA.SYS needed) ------------
+
+TEST_PLAYER_SRC = vera-tests/test_player.c
+VTM_LOADER_SRC  = vera-tests/vtm_loader.c
+VTM_PLAYER_SRC  = vera-tests/vtm_player.s
+VTM_PLAYER_OBJ  = vera-tests/vtm_player.o
+TEST_PLAYER_EXE = TESTPLR.COM
+VTM_COMPILE     = vera-tests/tools/vtm_compile.py
+DEMO_SONG_SRC   = vera-tests/songs/axelf.vtms
+DEMO_SONG_BIN   = vera-tests/songs/DEMO.VTM
+
+$(VTM_PLAYER_OBJ): $(VTM_PLAYER_SRC) vera-tests/vtm_notes.inc vera_common.inc
+	$(CA65) -I . -I vera-tests -o $@ $<
+
+$(TEST_PLAYER_EXE): $(TEST_PLAYER_SRC) $(VTM_LOADER_SRC) $(VTM_PLAYER_OBJ) vera-tests/vtm.h vera-tests/vera_detect.h
+	cl65 -t atari -I vera-tests --start-addr 0x5000 -o $(TEST_PLAYER_EXE) $(TEST_PLAYER_SRC) $(VTM_LOADER_SRC) $(VTM_PLAYER_OBJ)
+
+$(DEMO_SONG_BIN): $(DEMO_SONG_SRC) $(VTM_COMPILE)
+	$(PYTHON) $(VTM_COMPILE) $(DEMO_SONG_SRC) $(DEMO_SONG_BIN)
+
 # Resolution-specific bundled variants (suffix: 4=40x30, 8=80x30, 6=80x60)
 TEST_EXES     = TEST4.COM TEST8.COM TEST6.COM
 TESTGS_EXES   = TESTGS4.COM TESTGS8.COM TESTGS6.COM
 TESTMAZE_EXES = TESTMAZ4.COM TESTMAZ8.COM TESTMAZ6.COM
 TESTMTX_EXES  = TESTMTX4.COM TESTMTX8.COM TESTMTX6.COM
-ALL_TEST_EXES = $(TEST_EXES) $(TESTGS_EXES) $(TESTMAZE_EXES) $(TESTMTX_EXES) $(TEST_FX_EXE) $(RUNCPM_EXE)
+ALL_TEST_EXES = $(TEST_EXES) $(TESTGS_EXES) $(TESTMAZE_EXES) $(TESTMTX_EXES) $(TEST_FX_EXE) $(TEST_PLAYER_EXE) $(RUNCPM_EXE)
 
 # Template: compile once to an intermediate binary, then bundle three times.
 # $(1) = output base name (7 chars max, no digit suffix)
@@ -245,10 +265,10 @@ endef
 
 # Build a bootable DOS 2.0s ED ATR containing RUNCPM.COM and both
 # VERA8030.SYS (80x30) and VERA8060.SYS (80x60) drivers.
-atr: $(TARGET) $(RUNCPM_EXE) $(TEST_FX_EXE) $(SYS8030) $(SYS8060) $(SYS4030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
+atr: $(TARGET) $(RUNCPM_EXE) $(TEST_FX_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS8030) $(SYS8060) $(SYS4030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
 	rm -rf $(ATRBUILD)
 	mkdir -p $(ATRBUILD)
-	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(RUNCPM_EXE) $(TEST_FX_EXE) $(SYS8030) $(SYS8060) $(SYS4030) $(ATRBUILD)/
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(RUNCPM_EXE) $(TEST_FX_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS8030) $(SYS8060) $(SYS4030) $(ATRBUILD)/
 	$(DIR2ATR) -E -b Dos20 $(ATR) $(ATRBUILD)
 	@echo "ATR written to $(ATR)"
 	$(call copy_atr_to_fujinet,$(ATR))
@@ -259,21 +279,21 @@ disk1-runcpm.atr: $(RUNCPM_EXE) $(SYS8030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP
 	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk1
 	$(call copy_atr_to_fujinet,$@)
 
-disk2-veratests-40x30.atr: TEST4.COM TESTGS4.COM TESTMAZ4.COM TESTMTX4.COM $(TEST_FX_EXE) $(SYS4030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
+disk2-veratests-40x30.atr: TEST4.COM TESTGS4.COM TESTMAZ4.COM TESTMTX4.COM $(TEST_FX_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS4030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
 	mkdir -p .atrbuild/disk2_4030
-	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST4.COM TESTGS4.COM TESTMAZ4.COM TESTMTX4.COM $(TEST_FX_EXE) $(SYS4030) .atrbuild/disk2_4030/
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST4.COM TESTGS4.COM TESTMAZ4.COM TESTMTX4.COM $(TEST_FX_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS4030) .atrbuild/disk2_4030/
 	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk2_4030
 	$(call copy_atr_to_fujinet,$@)
 
-disk2-veratests-80x30.atr: TEST8.COM TESTGS8.COM TESTMAZ8.COM TESTMTX8.COM $(TEST_FX_EXE) $(SYS8030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
+disk2-veratests-80x30.atr: TEST8.COM TESTGS8.COM TESTMAZ8.COM TESTMTX8.COM $(TEST_FX_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS8030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
 	mkdir -p .atrbuild/disk2_8030
-	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST8.COM TESTGS8.COM TESTMAZ8.COM TESTMTX8.COM $(TEST_FX_EXE) $(SYS8030) .atrbuild/disk2_8030/
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST8.COM TESTGS8.COM TESTMAZ8.COM TESTMTX8.COM $(TEST_FX_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS8030) .atrbuild/disk2_8030/
 	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk2_8030
 	$(call copy_atr_to_fujinet,$@)
 
-disk2-veratests-80x60.atr: TEST6.COM TESTGS6.COM TESTMAZ6.COM TESTMTX6.COM $(TEST_FX_EXE) $(SYS8060) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
+disk2-veratests-80x60.atr: TEST6.COM TESTGS6.COM TESTMAZ6.COM TESTMTX6.COM $(TEST_FX_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS8060) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
 	mkdir -p .atrbuild/disk2_8060
-	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST6.COM TESTGS6.COM TESTMAZ6.COM TESTMTX6.COM $(TEST_FX_EXE) $(SYS8060) .atrbuild/disk2_8060/
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST6.COM TESTGS6.COM TESTMAZ6.COM TESTMTX6.COM $(TEST_FX_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS8060) .atrbuild/disk2_8060/
 	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk2_8060
 	$(call copy_atr_to_fujinet,$@)
 
@@ -285,6 +305,7 @@ clean: clean_objs
 		$(LOADER_LBL) \
 		$(ALL_TEST_EXES) \
 		_TEST.COM _TESTGS.COM _TESTMAZE.COM _TESTMTX.COM \
+		$(VTM_PLAYER_OBJ) $(DEMO_SONG_BIN) \
 		$(SYS4030) $(SYS8030) $(SYS8060) \
 		.dos20
 
