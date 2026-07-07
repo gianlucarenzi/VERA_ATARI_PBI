@@ -5,8 +5,11 @@ a .vtms tracker source for vtm_compile.py / vtm_player.s.
 
 Scope and known limitations (read before trusting the output):
   - Only AY8910/YM2149 register writes (VGM command 0xA0) are interpreted.
-    Any other sound chip logged in the same file (YM2151 FM, SN76489, ...)
-    is ignored — this script does not attempt FM synthesis at all.
+    Any other sound chip logged in the same file (YM2151 FM, SN76489,
+    Konami SCC, ...) is correctly skipped over (so parsing doesn't desync)
+    but not decoded — many MSX rips drive their melodic content through
+    SCC's 5-channel wavetable synth rather than the AY/PSG, in which case
+    converting only the AY part will produce a mostly-empty result.
   - AY can mix tone AND noise on the same channel; a VERA PSG voice is one
     waveform at a time. When both are enabled, tone wins and the noise
     layer is dropped.
@@ -25,9 +28,15 @@ Scope and known limitations (read before trusting the output):
     by ORDER; the VGM loop point (if present) becomes a pattern boundary
     so LOOP can reference it exactly.
 
+Multiple input files are concatenated in the order given — e.g. a game's
+separate "intro" and "main theme" rips — with only the LAST file's own
+loop point (or its start, if it has none) used as the final LOOP target;
+earlier files play once, straight through.
+
 Usage:
   python3 vgm2vtms.py song.vgm song.vtms [--pal]
   python3 vgm2vtms.py song.vgz song.vtms          (gzip-compressed VGM ok)
+  python3 vgm2vtms.py intro.vgm theme.vgm out.vtms [--pal]
 """
 import sys
 import gzip
@@ -110,10 +119,13 @@ def parse_gd3(buf, gd3_offset):
             return None
         length = u32(buf, gd3_offset + 8)
         data = buf[gd3_offset + 12:gd3_offset + 12 + length]
-        parts = data.split(b"\x00\x00")
-        # UTF-16LE null-terminated strings; split on the double-null is a
-        # decent approximation since ASCII text has no internal 00 00.
-        track_name = parts[0].decode("utf-16-le", errors="replace") if parts else ""
+        # Decode the whole blob first, THEN split on NUL — splitting the raw
+        # bytes on b"\x00\x00" instead misaligns whenever a field is empty
+        # (two adjacent terminators = an odd run of zero bytes relative to a
+        # 2-byte search pattern), corrupting the following field.
+        text = data.decode("utf-16-le", errors="replace")
+        parts = text.split("\x00")
+        track_name = parts[0] if parts else ""
         return track_name.strip()
     except Exception:
         return None
@@ -181,6 +193,12 @@ def parse_commands(buf, data_offset, loop_offset=None):
             pos += 2
         elif op == 0x95:
             pos += 5
+        elif 0xA1 <= op <= 0xAF:
+            pos += 3               # second-chip "aa dd" writes (v1.51+)
+        elif 0xB0 <= op <= 0xBF:
+            pos += 3               # "aa dd" writes for chips added in v1.60/1.70
+        elif 0xD0 <= op <= 0xD6:
+            pos += 4               # "pp aa dd" writes, e.g. 0xD2 = Konami SCC1
         elif op == 0xE0:
             pos += 5
         else:
@@ -281,7 +299,10 @@ def build_channel_timeline(events, ay_clock, total_samples, frame_hz):
 # .vtms emission
 # ---------------------------------------------------------------------------
 
-def build_vtms(per_channel_raw, total_frames, loop_frame, source_name):
+def build_vtms(songs, source_names):
+    """songs: list of {'per_channel_raw', 'total_frames', 'loop_frame'} dicts,
+    concatenated in order. Only the LAST song's own loop_frame (or its start,
+    if it has none) becomes the final LOOP target; earlier songs play once."""
     instruments = {}   # (waveform, ay_vol4) -> index
     instrument_lines = []
 
@@ -298,30 +319,39 @@ def build_vtms(per_channel_raw, total_frames, loop_frame, source_name):
         )
         return idx
 
-    # Build a per-frame, per-channel cell array. Default HOLD everywhere;
-    # each recorded state-change becomes a NOTE_ON/OFF at its frame.
+    total_frames = sum(s["total_frames"] for s in songs)
     cells = [[HOLD] * total_frames for _ in range(N_CHANNELS)]
 
-    for ch in range(AY_CHANNELS):
-        for frame, st in per_channel_raw[ch]:
-            if frame >= total_frames:
-                continue
-            if st is None:
-                cells[ch][frame] = NOTE_OFF
-            else:
-                waveform, hz, ay_vol4, envelope_mode = st
-                idx = note_index_for_hz(hz)
-                if idx is None:
-                    cells[ch][frame] = NOTE_OFF
+    song_start_frames = []
+    offset = 0
+    for s in songs:
+        song_start_frames.append(offset)
+        for ch in range(AY_CHANNELS):
+            for frame, st in s["per_channel_raw"][ch]:
+                global_frame = offset + frame
+                if global_frame >= total_frames:
                     continue
-                vol4 = ay_vol4 if not envelope_mode else 12   # fixed approximation
-                instr = instrument_for(waveform, vol4)
-                cells[ch][frame] = f"{note_name(idx)}:{instr}"
+                if st is None:
+                    cells[ch][global_frame] = NOTE_OFF
+                else:
+                    waveform, hz, ay_vol4, envelope_mode = st
+                    idx = note_index_for_hz(hz)
+                    if idx is None:
+                        cells[ch][global_frame] = NOTE_OFF
+                        continue
+                    vol4 = ay_vol4 if not envelope_mode else 12   # fixed approximation
+                    instr = instrument_for(waveform, vol4)
+                    cells[ch][global_frame] = f"{note_name(idx)}:{instr}"
+        offset += s["total_frames"]
     # channel 3 (unused) stays all-hold
 
-    # Split into patterns at 255-row boundaries, forcing a boundary at the
-    # loop point so LOOP can reference it exactly.
-    boundaries = sorted(set([0, loop_frame, total_frames]) - {None})
+    last_start = song_start_frames[-1]
+    last_loop = songs[-1]["loop_frame"]
+    loop_frame = last_start + last_loop if last_loop is not None else last_start
+
+    # Split into patterns at 255-row boundaries, forcing a boundary at every
+    # song join and at the final loop point so LOOP can reference it exactly.
+    boundaries = sorted(set([0, loop_frame, total_frames] + song_start_frames))
     pattern_ranges = []
     for i in range(len(boundaries) - 1):
         start, end = boundaries[i], boundaries[i + 1]
@@ -331,17 +361,17 @@ def build_vtms(per_channel_raw, total_frames, loop_frame, source_name):
             start = chunk_end
 
     lines = []
-    lines.append(f"; {source_name} — converted from VGM (AY-3-8910/YM2149) by vgm2vtms.py")
+    lines.append(f"; {' + '.join(source_names)} — converted from VGM "
+                 "(AY-3-8910/YM2149) by vgm2vtms.py")
     lines.append("; Review vgm2vtms.py's docstring for what this conversion approximates")
     lines.append("; (no FM, no tone+noise mixing, no real hardware envelope shapes).")
     lines.append("")
     lines.append("TEMPO 1")
     loop_pattern = 0
-    if loop_frame is not None:
-        for i, (start, _) in enumerate(pattern_ranges):
-            if start == loop_frame:
-                loop_pattern = i
-                break
+    for i, (start, _) in enumerate(pattern_ranges):
+        if start == loop_frame:
+            loop_pattern = i
+            break
     lines.append(f"LOOP {loop_pattern}")
     lines.append("")
     lines.extend(instrument_lines)
@@ -366,52 +396,68 @@ def build_vtms(per_channel_raw, total_frames, loop_frame, source_name):
     return "\n".join(lines)
 
 
+def load_song(in_path, frame_hz):
+    """Parse one VGM file into {'per_channel_raw', 'total_frames',
+    'loop_frame', 'source_name'}. Raises VgmError on failure."""
+    buf = load_vgm_bytes(in_path)
+    header = parse_header(buf)
+    if header["ay_clock"] == 0:
+        raise VgmError("no AY8910/YM2149 clock in header — "
+                        "this file doesn't appear to use that chip")
+
+    events, end_sample, loop_sample = parse_commands(
+        buf, header["data_offset"], header["loop_offset"]
+    )
+    if not events:
+        raise VgmError("no AY8910 register writes found")
+
+    loop_frame = None
+    if loop_sample is not None:
+        loop_frame = round(loop_sample * frame_hz / VGM_SAMPLE_RATE)
+
+    per_channel_raw = build_channel_timeline(events, header["ay_clock"], end_sample, frame_hz)
+    total_frames = round(end_sample * frame_hz / VGM_SAMPLE_RATE) + 1
+
+    title = None
+    gd3_rel = u32(buf, 0x14) if len(buf) >= 0x18 else 0
+    if gd3_rel:
+        title = parse_gd3(buf, 0x14 + gd3_rel)
+
+    return {
+        "per_channel_raw": per_channel_raw,
+        "total_frames": total_frames,
+        "loop_frame": loop_frame,
+        "source_name": title or in_path,
+    }
+
+
 def main(argv):
-    if len(argv) < 3:
-        print(f"usage: {argv[0]} <song.vgm|song.vgz> <song.vtms> [--pal]", file=sys.stderr)
+    flags = {a for a in argv[1:] if a.startswith("--")}
+    paths = [a for a in argv[1:] if not a.startswith("--")]
+    if len(paths) < 2:
+        print(f"usage: {argv[0]} <song.vgm|song.vgz> [more.vgm ...] <out.vtms> [--pal]",
+              file=sys.stderr)
         return 1
-    in_path, out_path = argv[1], argv[2]
-    frame_hz = FRAME_HZ_PAL if "--pal" in argv[3:] else FRAME_HZ_NTSC
+    in_paths, out_path = paths[:-1], paths[-1]
+    frame_hz = FRAME_HZ_PAL if "--pal" in flags else FRAME_HZ_NTSC
 
-    try:
-        buf = load_vgm_bytes(in_path)
-        header = parse_header(buf)
-        if header["ay_clock"] == 0:
-            print(f"{in_path}: no AY8910/YM2149 clock in header — "
-                  "this file doesn't appear to use that chip", file=sys.stderr)
+    songs = []
+    for in_path in in_paths:
+        try:
+            songs.append(load_song(in_path, frame_hz))
+        except VgmError as e:
+            print(f"{in_path}: {e}", file=sys.stderr)
             return 1
 
-        events, end_sample, loop_sample = parse_commands(
-            buf, header["data_offset"], header["loop_offset"]
-        )
-        if not events:
-            print(f"{in_path}: no AY8910 register writes found", file=sys.stderr)
-            return 1
-
-        loop_frame = None
-        if loop_sample is not None:
-            loop_frame = round(loop_sample * frame_hz / VGM_SAMPLE_RATE)
-
-        per_channel_raw = build_channel_timeline(events, header["ay_clock"], end_sample, frame_hz)
-        total_frames = round(end_sample * frame_hz / VGM_SAMPLE_RATE) + 1
-
-        title = None
-        gd3_rel = u32(buf, 0x14) if len(buf) >= 0x18 else 0
-        if gd3_rel:
-            title = parse_gd3(buf, 0x14 + gd3_rel)
-        source_name = title or in_path
-
-        vtms_text = build_vtms(per_channel_raw, total_frames, loop_frame, source_name)
-    except VgmError as e:
-        print(f"{in_path}: {e}", file=sys.stderr)
-        return 1
+    vtms_text = build_vtms(songs, [s["source_name"] for s in songs])
 
     with open(out_path, "w") as f:
         f.write(vtms_text)
 
+    total_frames = sum(s["total_frames"] for s in songs)
     n_patterns = vtms_text.count("PATTERN ")
     print(f"{out_path}: {total_frames} rows across {n_patterns} pattern(s), "
-          f"{frame_hz} rows/sec, loop at frame {loop_frame}")
+          f"{frame_hz} rows/sec, from {len(songs)} input file(s)")
     return 0
 
 

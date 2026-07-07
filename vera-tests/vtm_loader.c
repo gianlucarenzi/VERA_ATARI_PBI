@@ -12,26 +12,51 @@
 #include <stdlib.h>
 #include "vtm.h"
 
-/* Generous cap for a compact PSG tracker song — way more than any
- * reasonable .vtm will need (the bundled demo.vtms compiles to ~280 bytes). */
-#define VTM_MAX_FILE_SIZE 8192
+/* Read in growing chunks rather than guessing a cap up front: hand-authored
+ * songs (see vera-tests/songs) are a few hundred bytes, but songs produced
+ * by tools/vgm2vtms.py can run tens of KB for a multi-minute tune. A fixed
+ * cap is either too small (truncates the big ones) or, allocated eagerly
+ * before the actual size is known, too big to fit free RAM on a real Atari
+ * (especially with BASIC enabled) even for a tiny file. Growing on demand
+ * uses only as much memory as the file actually needs. */
+#define VTM_CHUNK_SIZE 4096u
 
 void *vtm_load_file(const char *filename)
 {
     FILE *f;
-    void *buf;
-    size_t n;
+    unsigned char *buf, *grown;
+    size_t cap, len, n;
 
     f = fopen(filename, "rb");
     if (!f) return NULL;
 
-    buf = malloc(VTM_MAX_FILE_SIZE);
+    cap = VTM_CHUNK_SIZE;
+    buf = malloc(cap);
     if (!buf) { fclose(f); return NULL; }
 
-    n = fread(buf, 1, VTM_MAX_FILE_SIZE, f);
+    /* Loop on n == 0, not "n < requested": cc65's CIO-backed fread() on the
+     * Atari target can return fewer bytes than asked for a single call even
+     * mid-file (not just at EOF), so a short read must not be taken as "no
+     * more data" — only a genuine zero-byte read means that. */
+    len = 0;
+    for (;;) {
+        n = fread(buf + len, 1, cap - len, f);
+        if (n == 0) break;
+        len += n;
+
+        if (len == cap) {
+            cap += VTM_CHUNK_SIZE;
+            grown = realloc(buf, cap);
+            if (!grown) { free(buf); fclose(f); return NULL; }
+            buf = grown;
+        }
+    }
     fclose(f);
 
-    if (n == 0) { free(buf); return NULL; }
+    if (len == 0) { free(buf); return NULL; }
+
+    grown = realloc(buf, len);   /* trim to the exact size read */
+    if (grown) buf = grown;
 
     return buf;
 }

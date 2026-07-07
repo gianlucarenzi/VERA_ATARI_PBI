@@ -184,7 +184,7 @@ $(VTM_PLAYER_OBJ): $(VTM_PLAYER_SRC) vera-tests/vtm_notes.inc vera_common.inc
 	$(CA65) -I . -I vera-tests -o $@ $<
 
 $(TEST_PLAYER_EXE): $(TEST_PLAYER_SRC) $(VTM_LOADER_SRC) $(VTM_PLAYER_OBJ) vera-tests/vtm.h vera-tests/vera_detect.h
-	cl65 -t atari -I vera-tests --start-addr 0x5000 -o $(TEST_PLAYER_EXE) $(TEST_PLAYER_SRC) $(VTM_LOADER_SRC) $(VTM_PLAYER_OBJ)
+	cl65 -t atari -C vera-tests/atari_nosyschk.cfg -I vera-tests --start-addr 0x3000 -o $(TEST_PLAYER_EXE) $(TEST_PLAYER_SRC) $(VTM_LOADER_SRC) $(VTM_PLAYER_OBJ)
 
 $(DEMO_SONG_BIN): $(DEMO_SONG_SRC) $(VTM_COMPILE)
 	$(PYTHON) $(VTM_COMPILE) $(DEMO_SONG_SRC) $(DEMO_SONG_BIN)

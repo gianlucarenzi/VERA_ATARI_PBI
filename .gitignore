@@ -70,3 +70,11 @@ vera_pbi.atr
 /TESTMTX8.COM
 /_TESTMTX.COM
 /FujiNet/fujinet-pc-ATARI/data/fnconfig.ini
+
+# VTM player build artifacts (rebuild with `make`/tools/vtm_compile.py)
+/TESTPLR.COM
+/vera-tests/vtm_player.o
+/vera-tests/songs/DEMO.VTM
+/vera-tests/songs/*.VTM
+__pycache__/
+*.pyc
