@@ -9,6 +9,9 @@ Songs are authored in a small text language (see `vtm_compile.py`) and
 compiled to this binary layout. The whole file is loaded into RAM as one
 blob and addressed with 16-bit offsets from its own start — no relocation.
 
+See [`vgm-to-atari-workflow.md`](vgm-to-atari-workflow.md) for the full
+pipeline from a VGM/VGZ rip to a running, VU-metered demo on Atari.
+
 ## Header (12 bytes)
 
 | Offset | Size | Field            | Notes                                    |
