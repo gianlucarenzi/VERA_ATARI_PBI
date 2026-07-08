@@ -1,5 +1,5 @@
-/* vbm.h — C-side API for showing a VBM1 bitmap on VERA's own video output
- * (vbm_display.s). See workflow/01-vera-asset-format.md for the VBM1 file
+/* vbm.h — C-side API for showing a VBM2 bitmap on VERA's own video output
+ * (vbm_display.s). See workflow/01-vera-asset-format.md for the VBM2 file
  * layout and tools/img2vbm.py for the PC-side converter.
  */
 #ifndef VBM_H
@@ -16,12 +16,14 @@ void vbm_init(void);
  * program. */
 void vbm_done(void);
 
-/* vbm_progress_cb — optional progress callback for vbm_load_file(), called
- * after every streamed chunk with (bytes streamed so far, total bytes to
- * stream = 512-byte palette + 320x240 pixel data). Unlike vtm_load_file()'s
- * callback there's no "title becomes readable" milestone to report — a
- * .vbm file carries no metadata — so this is just a plain byte counter. */
-typedef void (*vbm_progress_cb)(unsigned long loaded, unsigned long total);
+/* vbm_progress_cb — optional progress callback for vbm_load_file(). Called
+ * once as soon as the file's name is known (name/name_len valid, loaded==0
+ * — a natural point to print it, mirroring vtm_progress_cb's "title is
+ * valid now" milestone), then again after every streamed chunk with
+ * loaded/total updated (name/name_len still passed, unchanged, so callers
+ * that only care about progress can ignore the first two arguments). */
+typedef void (*vbm_progress_cb)(const char *name, unsigned char name_len,
+                                 unsigned long loaded, unsigned long total);
 
 /* vbm_load_file() — stream a compiled .vbm file's palette and 320x240 8bpp
  * pixel data straight into VRAM (no full-file buffering: at most a few

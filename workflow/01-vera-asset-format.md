@@ -101,7 +101,7 @@ asset carrying a redundant copy. Useful once palette offsets (the 4-bit
 "palette offset" field in tile/sprite attributes) are used to multiplex
 several 16-color sub-palettes out of one 256-entry table.
 
-## VBM1 — Full-screen bitmap format (implemented)
+## VBM2 — Full-screen bitmap format (implemented)
 
 A direct dump of VERA's 320x240 8bpp bitmap-mode layer (see the VERA
 reference's "Bitmap mode 1/2/4/8 bpp" and the KERNAL's own
@@ -111,14 +111,21 @@ Implemented by `vera-tests/tools/img2vbm.py` (any Pillow-readable source
 image in) and `vera-tests/vbm_display.s`/`vbm_loader.c` (Atari-side loader).
 
 ```
-offset 0:   4 bytes  magic "VBM1"
+offset 0:   4 bytes  magic "VBM2"
 offset 4:   2 bytes  width  (little-endian) — always 320 today
 offset 6:   2 bytes  height (little-endian) — always 240 today
 offset 8:   1 byte   bits per pixel (always 8 today)
-offset 9:   3 bytes  reserved (0)
-offset 12:  512 bytes  palette, 256 entries x 2 bytes, RGB444
-offset 524: width*height bytes  pixel data, 1 byte/pixel, row-major
+offset 9:   1 byte   name_len (0-255, byte length of `name` that follows)
+offset 10:  2 bytes  reserved (0)
+offset 12:  name_len bytes  name — raw ASCII, NOT null-terminated (same
+            convention as VTM3's title, vtm_format.md); img2vbm.py defaults
+            this to the source image's filename, or takes an explicit name
+offset 12+name_len:       512 bytes  palette, 256 entries x 2 bytes, RGB444
+offset 12+name_len+512:   width*height bytes  pixel data, 1 byte/pixel, row-major
 ```
+
+(v1 had no `name`/`name_len` — bumped to v2 when that field was added; no
+v1 files exist outside development, so the loader only ever accepts v2.)
 
 Unlike VSP1/VTS1, color index 0 is **not** treated as transparent — this is
 a full-screen bitmap meant to be the only thing on VERA's display while

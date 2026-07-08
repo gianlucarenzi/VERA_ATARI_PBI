@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """img2vbm.py — convert any Pillow-readable image (PNG/JPEG/BMP/GIF/...)
-into a VBM1 file: a direct dump of VERA's 320x240 8bpp bitmap-mode layer,
+into a VBM2 file: a direct dump of VERA's 320x240 8bpp bitmap-mode layer,
 ready for a straight copy loop into VRAM (see ../vbm_display.s and
 ../../workflow/01-vera-asset-format.md for the binary layout).
 
@@ -13,7 +13,9 @@ loader never computes anything, it just streams bytes to VRAM.
 
 Usage:
   python3 img2vbm.py cover.png cover.vbm
+  python3 img2vbm.py cover.png cover.vbm "Bubble Bobble"   # explicit name
 """
+import os
 import sys
 import struct
 
@@ -24,9 +26,14 @@ except ImportError:
 
 CANVAS_W = 320
 CANVAS_H = 240
+NAME_MAX = 255
 
 
-def build_vbm(src_path):
+def build_vbm(src_path, name=None):
+    if name is None:
+        name = os.path.splitext(os.path.basename(src_path))[0]
+    name_bytes = name.encode("ascii", "replace")[:NAME_MAX]
+
     src = Image.open(src_path).convert("RGBA")
 
     # Composite onto black now (not after resizing) so semi-transparent
@@ -58,16 +65,17 @@ def build_vbm(src_path):
         palette_bytes.append((g4 << 4) | b4)    # byte0 = GGGGBBBB
         palette_bytes.append(r4)                # byte1 = 0000RRRR
 
-    header = struct.pack("<4sHHBxxx", b"VBM1", CANVAS_W, CANVAS_H, 8)
-    return header + bytes(palette_bytes) + pixels
+    header = struct.pack("<4sHHBBxx", b"VBM2", CANVAS_W, CANVAS_H, 8, len(name_bytes))
+    return header + name_bytes + bytes(palette_bytes) + pixels
 
 
 def main():
-    if len(sys.argv) != 3:
-        sys.exit(f"Usage: python3 {sys.argv[0]} image.png out.vbm")
+    if len(sys.argv) not in (3, 4):
+        sys.exit(f'Usage: python3 {sys.argv[0]} image.png out.vbm ["Display Name"]')
 
     src_path, out_path = sys.argv[1], sys.argv[2]
-    data = build_vbm(src_path)
+    name = sys.argv[3] if len(sys.argv) == 4 else None
+    data = build_vbm(src_path, name)
     with open(out_path, "wb") as f:
         f.write(data)
 

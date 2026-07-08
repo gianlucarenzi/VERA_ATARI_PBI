@@ -13,11 +13,13 @@
  * errors are printed, so they don't flash past unread.
  *
  * If D1:DEMO.VBM is also present (see vbm.h/vbm_display.s, workflow/
- * 01-vera-asset-format.md's VBM1 format and tools/img2vbm.py), its artwork
+ * 01-vera-asset-format.md's VBM2 format and tools/img2vbm.py), its artwork
  * is shown centered on a black background on VERA's own video output —
  * a completely separate screen from the Atari's own ANTIC/GTIA display
  * used above for the title/VU meter — for as long as the song plays. No
- * image file means no change to VERA's display at all.
+ * image file means no change to VERA's display at all. The image's own
+ * embedded name is printed centered on this (the Atari's) screen too,
+ * the same way as the song title.
  *
  * Build: standalone, no VERA.SYS needed (PSG registers are poked directly,
  * same as test_matrix.c pokes VERA video registers directly).
@@ -55,65 +57,70 @@ static void wait_vbi(void)
         ;
 }
 
-/* Reads the title straight out of the loaded .vtm blob (vtm_format.md:
- * offset 12 = length, offset 13.. = raw ASCII, not null-terminated) and
- * prints it centered, in reverse video (ATASCII's bit7-set convention —
- * no special screen mode needed, just the normal E: device). */
-static void print_title(const void *song)
+/* Shared by the song title and the image name below: prints up to
+ * SCREEN_COLS bytes centered, in reverse video (ATASCII's bit7-set
+ * convention — no special screen mode needed, just the normal E: device),
+ * followed by a newline. */
+static void print_centered(const unsigned char *text, unsigned char len)
 {
-    const unsigned char *buf = (const unsigned char *)song;
-    unsigned char len = buf[12];
     unsigned char pad, i;
 
     if (len > SCREEN_COLS) len = SCREEN_COLS;   /* clip, don't wrap */
     pad = (SCREEN_COLS - len) / 2;
 
     for (i = 0; i < pad; i++) putchar(' ');
-    for (i = 0; i < len; i++) putchar(buf[13 + i] | 0x80);
+    for (i = 0; i < len; i++) putchar(text[i] | 0x80);
     putchar('\n');
 }
 
+/* Shared by load_progress/image_progress below: grows a one-row, left-to-
+ * right bar of reverse-video blocks, one block per SCREEN_COLS-th of
+ * loaded/total. *filled tracks how much of THIS bar is already drawn
+ * (each caller keeps its own counter) — never needs to erase/redraw,
+ * since loaded only ever grows, so the bar only ever gains blocks. */
+static void draw_bar(unsigned char *filled, unsigned long loaded, unsigned long total)
+{
+    unsigned char target = (unsigned char)((loaded * SCREEN_COLS) / total);
+    while (*filled < target) {
+        putchar(' ' | 0x80);
+        (*filled)++;
+    }
+}
+
+/* Reads the title straight out of the loaded .vtm blob (vtm_format.md:
+ * offset 12 = length, offset 13.. = raw ASCII, not null-terminated). */
+static void print_title(const void *song)
+{
+    const unsigned char *buf = (const unsigned char *)song;
+    print_centered(buf + 13, buf[12]);
+}
+
 /* vtm_load_file()'s progress callback (see vtm.h): fires once as soon as
- * the title is readable (prints it), then again per chunk of pattern data
- * — grows a one-row, left-to-right bar of reverse-video blocks under the
- * title, one block per SCREEN_COLS-th of the file loaded so far. Never
- * needs to erase/redraw: loaded only ever grows, so the bar only ever
- * gains blocks. */
+ * the title is readable (prints it), then again per chunk of pattern
+ * data (grows the bar). */
 static void load_progress(const void *song, unsigned long loaded, unsigned long total)
 {
-    unsigned char target;
-
     if (!title_shown) {
         print_title(song);
         putchar('\n');   /* blank row between title and progress bar */
         title_shown = 1;
     }
-
-    target = (unsigned char)((loaded * SCREEN_COLS) / total);
-    while (bar_filled < target) {
-        putchar(' ' | 0x80);
-        bar_filled++;
-    }
+    draw_bar(&bar_filled, loaded, total);
 }
 
-/* vbm_load_file()'s progress callback (see vbm.h) — same growing-bar idea
- * as load_progress() above, on its own row below the song's. A .vbm file
- * has no title to print first, so the only special-cased first call is
- * the blank spacer row. */
-static void image_progress(unsigned long loaded, unsigned long total)
+/* vbm_load_file()'s progress callback (see vbm.h): fires once as soon as
+ * the file's embedded name is readable (prints it, same as the song
+ * title above), then again per streamed chunk (grows its own bar, on its
+ * own row below the song's). */
+static void image_progress(const char *name, unsigned char name_len,
+                            unsigned long loaded, unsigned long total)
 {
-    unsigned char target;
-
     if (!img_bar_started) {
-        putchar('\n');   /* blank row before the image progress bar */
+        print_centered((const unsigned char *)name, name_len);
+        putchar('\n');   /* blank row between name and progress bar */
         img_bar_started = 1;
     }
-
-    target = (unsigned char)((loaded * SCREEN_COLS) / total);
-    while (img_bar_filled < target) {
-        putchar(' ' | 0x80);
-        img_bar_filled++;
-    }
+    draw_bar(&img_bar_filled, loaded, total);
 }
 
 static void vu_tick(void)
