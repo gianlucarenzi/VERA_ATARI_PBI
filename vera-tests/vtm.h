@@ -21,8 +21,18 @@ void vtm_stop(void);
  * VU meter: call once per channel after each vtm_tick(). */
 unsigned char vtm_level(unsigned char ch);
 
-/* vtm_load_file() — read a whole .vtm file into a malloc'd buffer.
+/* vtm_progress_cb — optional progress callback for vtm_load_file(). Called
+ * once as soon as the header/title/order/instruments/pattern_table prefix
+ * is in (buf's title field is already valid at that point, loaded==the
+ * prefix size), then again after each chunk of the remaining pattern data
+ * — buf, loaded and total let a caller show a title and/or a percentage
+ * without needing to know anything about the .vtm layout itself. */
+typedef void (*vtm_progress_cb)(const void *buf, unsigned long loaded, unsigned long total);
+
+/* vtm_load_file() — read a whole .vtm file into a malloc'd buffer, sized
+ * exactly from the file's own header/pattern_table (see vtm_format.md) —
+ * no guessing/growing needed. progress may be NULL.
  * Returns NULL on any I/O error; caller owns the buffer (free() when done). */
-void *vtm_load_file(const char *filename);
+void *vtm_load_file(const char *filename, vtm_progress_cb progress);
 
 #endif /* VTM_H */

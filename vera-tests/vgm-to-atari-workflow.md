@@ -19,6 +19,50 @@ Player/Missile VU meter and the title-banner screen — there is no separate
 "enable VU meter" step, it runs automatically whenever the program plays a
 song.
 
+## Worked example: Bubble Bobble (MSX intro + main theme)
+
+`vera-tests/songs/examples/` has two real VGZ rips (MSX AY-3-8910, from
+Bubble Bobble) checked in as a concrete, always-available example of every
+step below:
+
+- `bubblebobble-01-intro.vgz` — the short intro jingle, plays once
+- `bubblebobble-02-maintheme.vgz` — the looping main theme
+
+They're meant to be converted together, intro-then-loop, exactly like
+`vgm2vtms.py`'s multi-file mode was designed for. Pass `--pal` since that's
+what the worked boot command in step 7 uses (see the NTSC/PAL note in
+step 2 — it also makes the file noticeably smaller, which matters below):
+
+```sh
+cd vera-tests
+python3 tools/vgm2vtms.py songs/examples/bubblebobble-01-intro.vgz \
+                           songs/examples/bubblebobble-02-maintheme.vgz \
+                           songs/bubblebobble.vtms --pal
+```
+```
+songs/bubblebobble.vtms: 2728 rows across 12 pattern(s), 50 rows/sec, from 2 input file(s)
+```
+
+```sh
+python3 tools/vtm_compile.py songs/bubblebobble.vtms songs/DEMO.VTM
+```
+```
+songs/DEMO.VTM: 21955 bytes, 12 pattern(s), 15 instrument(s), 12 order entries
+```
+
+That's a real, playable `DEMO.VTM` — drop it on a disk per step 6 below
+(or `make TESTPLR.COM` once and reuse it) and it boots with the title
+"Introduction + Main Theme" centered in reverse video, a loading progress
+bar underneath, then VU meters live, intro playing once into the looping
+theme. `bubblebobble.vtms` itself is gitignored (regenerate it with the
+command above) — only the two source `.vgz` files are checked in.
+
+This example is also the one that shaped several details elsewhere in this
+guide: at ~22KB it's big enough to bump into real free-RAM limits on a
+64K Atari (see step 5's load address and the loader notes in
+Troubleshooting) and slow enough to load that the progress bar is worth
+having.
+
 ## 1. Get a source VGM/VGZ
 
 Only AY-3-8910/YM2149 register writes (VGM command `0xA0`) are decoded.
@@ -93,9 +137,18 @@ make TESTPLR.COM
 
 This links `test_player.c` + `vtm_loader.c` + `vtm_player.o` + `vu_pm.o`
 against `vera-tests/atari_nosyschk.cfg` (a low-memory-footprint linker
-config, load address `$3000`, no VERA.SYS needed — the program pokes PSG
+config, load address `$2500`, no VERA.SYS needed — the program pokes PSG
 registers directly). The VU meter (`vu_pm.s`) is always linked in; nothing
 to toggle.
+
+While loading, the title appears first (as soon as it's readable — it's
+near the start of the file), then a one-row bar of reverse-video blocks
+underneath fills in left to right as the rest of the file streams in
+(`vtm_loader.c`'s `vtm_progress_cb`, wired up in `test_player.c`'s
+`load_progress()`). For a small hand-authored song this flashes past in a
+fraction of a second; for a multi-minute VGM conversion like the worked
+example above it's genuinely useful feedback that the machine hasn't
+hung.
 
 If you just want to hear your own song without rebuilding the executable,
 point the Makefile's demo-song variable at your file and let it (re)compile
@@ -169,6 +222,13 @@ Press any key to stop and return to DOS.
   and that it compiled (`vtm_compile.py`'s output line reports size/pattern
   count — an empty or truncated file usually means the `.vtms` source had
   a syntax error caught earlier, or wasn't the file you thought you edited).
+  It can also mean genuine RAM exhaustion for a large VGM-converted song —
+  `vtm_loader.c` sizes its buffer exactly from the file's own header/
+  pattern_table (see vtm_format.md), so there's no guessing overhead left
+  to trim, but a 64K Atari with `TESTPLR.COM` loaded at `$2500` only has
+  so much free RAM for a single file. If a big conversion won't fit,
+  re-run `vgm2vtms.py` with `--pal` (fewer rows/sec = a smaller file, see
+  the worked example above) or trim the source VGM.
 - **Notes sound right but the song visibly runs at the wrong speed**: NTSC
   vs PAL mismatch between the `--pal` flag used in step 2 and the `-pal`
   flag used in step 7 — one row is always one VBI frame, so the two must

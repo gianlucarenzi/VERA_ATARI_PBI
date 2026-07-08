@@ -77,5 +77,7 @@ vera_pbi.atr
 /vera-tests/vu_pm.o
 /vera-tests/songs/DEMO.VTM
 /vera-tests/songs/*.VTM
+# generated from vera-tests/songs/examples/*.vgz — see vgm-to-atari-workflow.md
+/vera-tests/songs/bubblebobble.vtms
 __pycache__/
 *.pyc

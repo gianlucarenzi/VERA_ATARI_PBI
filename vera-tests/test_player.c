@@ -35,6 +35,8 @@
 #define VU_DECAY_STEP  12u
 
 static unsigned char displayed_level[N_BARS];
+static unsigned char bar_filled;
+static unsigned char title_shown;
 
 static void wait_vbi(void)
 {
@@ -59,6 +61,29 @@ static void print_title(const void *song)
     for (i = 0; i < pad; i++) putchar(' ');
     for (i = 0; i < len; i++) putchar(buf[13 + i] | 0x80);
     putchar('\n');
+}
+
+/* vtm_load_file()'s progress callback (see vtm.h): fires once as soon as
+ * the title is readable (prints it), then again per chunk of pattern data
+ * — grows a one-row, left-to-right bar of reverse-video blocks under the
+ * title, one block per SCREEN_COLS-th of the file loaded so far. Never
+ * needs to erase/redraw: loaded only ever grows, so the bar only ever
+ * gains blocks. */
+static void load_progress(const void *song, unsigned long loaded, unsigned long total)
+{
+    unsigned char target;
+
+    if (!title_shown) {
+        print_title(song);
+        putchar('\n');   /* blank row between title and progress bar */
+        title_shown = 1;
+    }
+
+    target = (unsigned char)((loaded * SCREEN_COLS) / total);
+    while (bar_filled < target) {
+        putchar(' ' | 0x80);
+        bar_filled++;
+    }
 }
 
 static void vu_tick(void)
@@ -94,21 +119,21 @@ int main(void)
 
     vera_require();
 
-    song = vtm_load_file("D1:DEMO.VTM");
+    song = vtm_load_file("D1:DEMO.VTM", load_progress);
     if (!song) {
         printf("ERROR: could not load D1:DEMO.VTM\n");
         rval=1;
         goto err;
     }
+    putchar('\n');
+    putchar('\n');   /* move past the progress bar row */
 
     if (!vtm_init(song)) {
-        printf("ERROR: DEMO.VTM is not a valid VTM1 file\n");
+        printf("ERROR: DEMO.VTM is not a valid VTM3 file\n");
         free(song);
         rval=1;
         goto err;
     }
-
-    print_title(song);
 
     CH_REG = CH_NONE;
     for (ch = 0; ch < N_BARS; ch++)
