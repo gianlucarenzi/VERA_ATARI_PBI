@@ -188,7 +188,7 @@ $(VTM_PLAYER_OBJ): $(VTM_PLAYER_SRC) vera-tests/vtm_notes.inc vera_common.inc
 $(VU_PM_OBJ): $(VU_PM_SRC)
 	$(CA65) -I . -I vera-tests -o $@ $<
 
-$(TEST_PLAYER_EXE): $(TEST_PLAYER_SRC) $(VTM_LOADER_SRC) $(VTM_PLAYER_OBJ) $(VU_PM_OBJ) vera-tests/vtm.h vera-tests/vu_pm.h vera-tests/vera_detect.h
+$(TEST_PLAYER_EXE): $(TEST_PLAYER_SRC) $(VTM_LOADER_SRC) $(VTM_PLAYER_OBJ) $(VU_PM_OBJ) vera-tests/vtm.h vera-tests/vu_pm.h vera-tests/vera_detect.h vera-tests/atari_nosyschk.cfg
 	cl65 -t atari -C vera-tests/atari_nosyschk.cfg -I vera-tests --start-addr 0x3000 -o $(TEST_PLAYER_EXE) $(TEST_PLAYER_SRC) $(VTM_LOADER_SRC) $(VTM_PLAYER_OBJ) $(VU_PM_OBJ)
 
 $(DEMO_SONG_BIN): $(DEMO_SONG_SRC) $(VTM_COMPILE)
@@ -229,7 +229,7 @@ RUNCPM_SRC = vera-tests/runcpm.c
 RUNCPM_EXE = RUNCPM.COM
 RUNCPM80_EXE = RUNCPM80.COM
 
-$(RUNCPM_EXE): $(RUNCPM_SRC) vera-tests/serterm_handler.o vera_sys_font.o
+$(RUNCPM_EXE): $(RUNCPM_SRC) vera-tests/serterm_handler.o vera_sys_font.o vera-tests/atari_nosyschk.cfg
 	# Load RUNCPM low enough to fit even if resident drivers (VERA/FujiNet/etc.) lower MEMTOP.
 	# Use a cc65 cfg without the SYSCHK chunk at $2E00.
 	cl65 -t atari -C vera-tests/atari_nosyschk.cfg --start-addr 0x3000 -o $(RUNCPM_EXE) $(RUNCPM_SRC) vera-tests/serterm_handler.o vera_sys_font.o

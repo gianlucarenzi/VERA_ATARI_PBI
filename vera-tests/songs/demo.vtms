@@ -2,6 +2,7 @@
 ; 4th channel unused). Compile with:
 ;   python3 ../tools/vtm_compile.py demo.vtms DEMO.VTM
 
+TITLE "Demo"
 TEMPO 6
 LOOP 0
 

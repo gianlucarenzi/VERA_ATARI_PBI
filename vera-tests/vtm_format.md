@@ -1,4 +1,4 @@
-# VTM — Vera Tracker Module (v2)
+# VTM — Vera Tracker Module (v3)
 
 A compact PSG-only music format for the VERA PBI card, played back by
 `vtm_player.s`. Drives 4 of VERA's 16 PSG (wavetable) voices under vertical
@@ -13,7 +13,7 @@ blob and addressed with 16-bit offsets from its own start — no relocation.
 
 | Offset | Size | Field            | Notes                                    |
 |-------:|-----:|------------------|-------------------------------------------|
-| 0      | 4    | magic            | `"VTM2"`                                  |
+| 0      | 4    | magic            | `"VTM3"`                                  |
 | 4      | 1    | n_channels       | fixed at 4 for v1, player validates it    |
 | 5      | 1    | frames_per_row   | VBI frames per row (tempo); >= 1          |
 | 6      | 1    | n_instruments    |                                            |
@@ -21,9 +21,13 @@ blob and addressed with 16-bit offsets from its own start — no relocation.
 | 8      | 1    | order_len        |                                            |
 | 9      | 1    | loop_pos         | index into order[] to jump back to at end |
 | 10     | 2    | reserved         | 0                                          |
+| 12     | 1    | title_len        | 0-255, byte length of `title` that follows |
 
 Followed by, back to back:
 
+- `title[title_len]` — raw ASCII bytes, NOT null-terminated (length comes
+  from `title_len`). A host program reads it straight out of the loaded
+  blob at offset 13; the player itself never looks at it.
 - `order[order_len]` — 1 byte each, pattern index per song position.
 - `instruments[n_instruments]` — 3 bytes each (see below).
 - `pattern_table[n_patterns]` — 3 bytes each: `n_rows` (1 byte),

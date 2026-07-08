@@ -1,4 +1,4 @@
-/* vtm_play.c — desktop VTM2 player/previewer (SDL2 audio).
+/* vtm_play.c — desktop VTM3 player/previewer (SDL2 audio).
  *
  * Plays a compiled .vtm file (see ../vtm_format.md) through the PC's sound
  * card, so you can audition a song while composing without going through
@@ -55,6 +55,8 @@ typedef struct {
     size_t size;
 
     uint8_t n_channels, frames_per_row, n_instruments, n_patterns, order_len, loop_pos;
+    uint8_t title_len;
+    const uint8_t *title;    /* not null-terminated; title_len bytes */
     const uint8_t *order;
     Instrument instruments[MAX_INSTR];
     PatternEntry pattern_table[MAX_PATTERNS];
@@ -111,7 +113,7 @@ static uint8_t *load_file(const char *path, size_t *out_size)
 
 static int song_load(Song *s, const uint8_t *data, size_t size)
 {
-    if (size < 12 || memcmp(data, "VTM2", 4) != 0) return 0;
+    if (size < 13 || memcmp(data, "VTM3", 4) != 0) return 0;
 
     s->data           = data;
     s->size           = size;
@@ -121,12 +123,17 @@ static int song_load(Song *s, const uint8_t *data, size_t size)
     s->n_patterns     = data[7];
     s->order_len      = data[8];
     s->loop_pos       = data[9];
+    s->title_len      = data[12];
 
     if (s->n_channels != N_CHANNELS) return 0;
     if (s->n_instruments > MAX_INSTR || s->n_patterns > MAX_PATTERNS) return 0;
     if (s->order_len == 0 || s->loop_pos >= s->order_len) return 0;
 
-    size_t off = 12;
+    size_t off = 13;
+    if (off + s->title_len > size) return 0;
+    s->title = data + off;
+    off += s->title_len;
+
     if (off + s->order_len > size) return 0;
     s->order = data + off;
     off += s->order_len;
@@ -398,7 +405,7 @@ int main(int argc, char **argv)
 
     Song song;
     if (!song_load(&song, data, size)) {
-        fprintf(stderr, "%s: not a valid VTM2 file\n", song_path);
+        fprintf(stderr, "%s: not a valid VTM3 file\n", song_path);
         free(data);
         return 1;
     }
@@ -440,7 +447,10 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    printf("Playing %s — Ctrl+C to stop.\n", song_path);
+    if (song.title_len)
+        printf("Playing %.*s (%s) — Ctrl+C to stop.\n", song.title_len, song.title, song_path);
+    else
+        printf("Playing %s — Ctrl+C to stop.\n", song_path);
     SDL_PauseAudioDevice(dev, 0);
     for (;;) SDL_Delay(200);
 

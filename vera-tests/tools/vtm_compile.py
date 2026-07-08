@@ -69,6 +69,7 @@ def parse_kv_args(tokens, line_no):
 def compile_source(text):
     tempo = 4
     loop_pos = 0
+    title = ""
     order = None
     instruments = {}
     patterns = {}
@@ -94,6 +95,15 @@ def compile_source(text):
             if len(tokens) != 2 or not tokens[1].isdigit():
                 raise VtmError(line_no, "usage: LOOP <order-index>")
             loop_pos = int(tokens[1])
+            cur_pattern = None
+
+        elif directive == "TITLE":
+            rest = line[len(tokens[0]):].strip()
+            if len(rest) < 2 or rest[0] != '"' or rest[-1] != '"':
+                raise VtmError(line_no, 'usage: TITLE "text"')
+            title = rest[1:-1]
+            if len(title.encode("ascii", errors="replace")) > 255:
+                raise VtmError(line_no, "TITLE must be at most 255 bytes")
             cur_pattern = None
 
         elif directive == "ORDER":
@@ -180,6 +190,7 @@ def compile_source(text):
     return {
         "tempo": tempo,
         "loop_pos": loop_pos,
+        "title": title,
         "order": order,
         "instruments": [instruments[i] for i in range(n_instruments)],
         "patterns": [patterns[i] for i in range(n_patterns)],
@@ -191,6 +202,7 @@ def build_binary(song):
     instruments = song["instruments"]
     patterns = song["patterns"]
 
+    title_bytes = song["title"].encode("ascii", errors="replace")
     order_bytes = bytes(order)
     instr_bytes = b"".join(struct.pack("<BBB", reg2, reg3, decay) for reg2, reg3, decay in instruments)
 
@@ -205,9 +217,10 @@ def build_binary(song):
                 blob += bytes([note, instr_byte])
         pattern_cell_blobs.append(bytes(blob))
 
-    header_size = 12
+    header_size = 13
     pattern_table_size = 3 * len(patterns)
-    data_start = header_size + len(order_bytes) + len(instr_bytes) + pattern_table_size
+    data_start = (header_size + len(title_bytes) + len(order_bytes)
+                  + len(instr_bytes) + pattern_table_size)
 
     pattern_table = bytearray()
     offset = data_start
@@ -216,18 +229,20 @@ def build_binary(song):
         offset += len(blob)
 
     header = struct.pack(
-        "<4sBBBBBBxx",
-        b"VTM2",
+        "<4sBBBBBBxxB",
+        b"VTM3",
         N_CHANNELS,
         song["tempo"],
         len(instruments),
         len(patterns),
         len(order),
         song["loop_pos"],
+        len(title_bytes),
     )
 
     out = bytearray()
     out += header
+    out += title_bytes
     out += order_bytes
     out += instr_bytes
     out += pattern_table

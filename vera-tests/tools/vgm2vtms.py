@@ -366,6 +366,8 @@ def build_vtms(songs, source_names):
     lines.append("; Review vgm2vtms.py's docstring for what this conversion approximates")
     lines.append("; (no FM, no tone+noise mixing, no real hardware envelope shapes).")
     lines.append("")
+    title_text = " + ".join(source_names).replace('"', "'")[:255]
+    lines.append(f'TITLE "{title_text}"')
     lines.append("TEMPO 1")
     loop_pattern = 0
     for i, (start, _) in enumerate(pattern_ranges):

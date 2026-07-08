@@ -246,6 +246,12 @@ _vu_pm_done:
     lda saved_sdlsth
     sta SDLSTH
     cli
+
+    lda #0                   ; park all 4 players at HPOS 0 (off the visible
+    sta HPOSP0               ; playfield) — belt-and-suspenders alongside
+    sta HPOSP1               ; disabling P/M DMA above, in case anything
+    sta HPOSP2               ; re-enables it later without reinitializing
+    sta HPOSP3               ; horizontal position first
     rts
 
 ; ============================================================================

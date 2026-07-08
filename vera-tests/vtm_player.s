@@ -110,7 +110,7 @@ _vtm_init:
     bne @bad
     iny
     lda (zp_song),y
-    cmp #'2'
+    cmp #'3'
     bne @bad
 
     ldy #4                          ; n_channels
@@ -134,12 +134,24 @@ _vtm_init:
     lda (zp_song),y
     sta vtm_loop_pos
 
-    ; zp_order = zp_song + 12 (header size)
+    ldy #12                         ; title_len
+    lda (zp_song),y
+    sta tmp_lo                      ; stash title_len (title text itself is
+                                     ; never read by the player, only skipped)
+
+    ; zp_order = zp_song + 13 (header size) + title_len
     clc
     lda zp_song
-    adc #12
+    adc #13
     sta zp_order
     lda zp_song+1
+    adc #0
+    sta zp_order+1
+    clc
+    lda zp_order
+    adc tmp_lo
+    sta zp_order
+    lda zp_order+1
     adc #0
     sta zp_order+1
 
