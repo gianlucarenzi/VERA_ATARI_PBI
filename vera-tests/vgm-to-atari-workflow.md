@@ -119,9 +119,10 @@ call and rebuild `TESTPLR.COM` if you want a different name/drive).
 ## 4. Optional: preview on the PC before touching the emulator
 
 ```sh
-cc -O2 -o vtm_play vera-tests/tools/vtm_play.c $(sdl2-config --cflags --libs) -lm
-./vtm_play DEMO.VTM              # Ctrl+C to stop
-./vtm_play DEMO.VTM --pal        # tick at 50 Hz instead of 60 Hz
+cc -O2 -o vtm_play vera-tests/tools/vtm_play.c $(sdl2-config --cflags --libs) -lSDL2_image -lm
+./vtm_play DEMO.VTM                             # Ctrl+C to stop
+./vtm_play DEMO.VTM --pal                       # tick at 50 Hz instead of 60 Hz
+./vtm_play DEMO.VTM --image cover.png           # + artwork and a VU meter in a window
 ./vtm_play DEMO.VTM --wav out.wav --seconds 8   # render to a WAV file instead
 ```
 
@@ -131,6 +132,64 @@ just with textbook-shape waveforms instead of real VERA hardware quirks
 catch a wrong note or bad tempo before doing a much slower
 emulator/hardware round trip. It is not a substitute for a final listen on
 `atari800` or real hardware.
+
+`--image` loads the artwork straight through SDL2_image — **no
+conversion step, unlike the Atari side** (`img2vbm.py`/`.vbm`, step 8):
+any PNG/JPEG/BMP/GIF works as-is, since the PC has no 256-color-palette
+hardware constraint to work around. A `.vbm` file itself is *not* a valid
+`--image` argument — it's a raw VRAM dump (header + RGB444 palette +
+indexed pixels), not a format SDL2_image understands; always point
+`--image` at the original source picture, before `img2vbm.py` ever
+touches it. The window also grows a 128px-tall, 4-channel VU meter below
+the artwork (green-to-red bars, same idea as `vu_pm.s`'s Player/Missile
+meter on the Atari side) — one PC window standing in for the Atari's own
+screen (VU meter) and VERA's own separate video output (artwork), which
+on real hardware are two different monitors.
+
+### Verification checklist
+
+A fast, no-emulator sanity check that the whole audio+artwork pipeline
+behaves before spending time on the slower Atari/disk-image round trip.
+Using the checked-in Bubble Bobble example end to end:
+
+1. **Pick a VGM/VGZ.** `vera-tests/songs/examples/bubblebobble-01-intro.vgz`
+   and `...-02-maintheme.vgz` are already in the repo — any other
+   AY-3-8910/YM2149 rip works the same way (step 1).
+2. **Convert it** (step 2 + step 3):
+   ```sh
+   python3 vera-tests/tools/vgm2vtms.py \
+       vera-tests/songs/examples/bubblebobble-01-intro.vgz \
+       vera-tests/songs/examples/bubblebobble-02-maintheme.vgz \
+       /tmp/check.vtms --pal
+   python3 vera-tests/tools/vtm_compile.py /tmp/check.vtms /tmp/check.vtm
+   ```
+   Confirm: both commands print a size/row/pattern summary line and exit
+   0 — no traceback, no "line N: ..." syntax error.
+3. **Pick a bitmap.** `vera-tests/pictures/bubble-bob.png` is already in
+   the repo. Any PNG/JPEG/BMP/GIF works — **no conversion needed for this
+   PC check** (that's an Atari-only step, see step 8); pass it straight
+   to `--image` below.
+4. **Play both together:**
+   ```sh
+   cc -O2 -o /tmp/vtm_play vera-tests/tools/vtm_play.c \
+       $(sdl2-config --cflags --libs) -lSDL2_image -lm
+   /tmp/vtm_play /tmp/check.vtm --pal --image vera-tests/pictures/bubble-bob.png
+   ```
+   Confirm, in order:
+   - the terminal prints `Playing <title> (...) — close the window or
+     Ctrl+C to stop.` (the title comes from the `.vtm`'s embedded `TITLE`)
+   - a window opens showing the artwork centered in the top 320x240 area
+     on a black background
+   - audio plays through the PC's speakers, matching the artwork's song
+   - up to 4 vertical bars animate in the 320x128 strip below the artwork,
+     rising and falling with each channel's volume, never fully
+     disappearing once a channel has sounded (a small green floor stays)
+   - closing the window (or Ctrl+C in the terminal) exits cleanly, no
+     hang, no leftover process
+5. If all five hold, the `.vtm`/artwork pair is good to carry through
+   steps 5-8 onto an actual Atari disk — any problem specific to *real*
+   hardware from here on (RAM budget, disk density, VTOC quirks) is
+   covered in Troubleshooting, not in the audio/artwork data itself.
 
 ## 5. Build `TESTPLR.COM`
 
