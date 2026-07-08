@@ -41,6 +41,20 @@ VERA_DC_VSTART          = PBI_ADDR+$0B              ; active area start row    (
 VERA_DC_VSTOP           = PBI_ADDR+$0C              ; active area stop  row    (/2)
 
 ; ============================================================================
+; VERA layer 0 registers — unused elsewhere in this project (every existing
+; test program drives layer 1's tile/text mode only); added for
+; vbm_display.s's full-screen 320x240 8bpp bitmap display.
+; ============================================================================
+
+VERA_L0_CONFIG          = PBI_ADDR+$0D              ; map mode and colour depth
+VERA_L0_MAPBASE         = PBI_ADDR+$0E              ; tilemap base (VRAM addr / 512) — unused in bitmap mode
+VERA_L0_TILEBASE        = PBI_ADDR+$0F               ; bitmap base (VRAM addr/2048, bits7:2) + bitmap width (bit0)
+VERA_L0_HSCR_L          = PBI_ADDR+$10              ; horizontal scroll low  byte
+VERA_L0_HSCR_H          = PBI_ADDR+$11              ; horizontal scroll high byte
+VERA_L0_VSCR_L          = PBI_ADDR+$12              ; vertical scroll low  byte
+VERA_L0_VSCR_H          = PBI_ADDR+$13              ; vertical scroll high byte
+
+; ============================================================================
 ; VERA layer 1 registers
 ; ============================================================================
 
@@ -75,8 +89,14 @@ VERA_DCSEL5             = $0A                       ; CTRL: select FX bank 5 (FX
 VERA_DCSEL6             = $0C                       ; CTRL: select FX bank 6 (FX_CACHE)
 
 VERA_VIDEO_VGA          = $01                       ; DC_VIDEO: VGA output mode (640×480)
+VERA_LAYER0_EN          = $10                       ; DC_VIDEO: enable layer 0
 VERA_LAYER1_EN          = $20                       ; DC_VIDEO: enable layer 1
 VERA_MAP_128x64         = $60                       ; L1_CONFIG: 128-wide × 64-tall tilemap
+
+VERA_L0_BITMAP_8BPP     = $07                       ; L0_CONFIG: Bitmap Mode(bit2)=1 | Color Depth(bits1:0)=3 (8bpp)
+VERA_L0_TILEBASE_320    = $00                       ; L0_TILEBASE: base=$0:0000, bit0=0 -> 320px-wide bitmap
+VERA_SCALE_320X240      = $40                       ; DC_HSCALE/DC_VSCALE: 2:1 (320x240 source -> 640x480 VGA out),
+                                                     ; same convention already used for this project's 40x30 text mode
 
 ; ============================================================================
 ; VERA audio — PSG voice registers live in VRAM at $1F9C0-$1F9FF (16 voices,

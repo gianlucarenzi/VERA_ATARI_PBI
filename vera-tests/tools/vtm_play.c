@@ -13,20 +13,35 @@
  * reproduced here. Good enough to judge melody, timing and envelope
  * decisions; not a substitute for a final listen on real hardware/emulator.
  *
+ * --image loads the ORIGINAL artwork straight through SDL2_image (PNG/JPEG/
+ * BMP/...) — unlike the Atari side (see vbm_display.s/tools/img2vbm.py),
+ * the PC preview has no 256-color-palette hardware constraint, so there's
+ * no need for a preconverted intermediate format here. It's centered
+ * (scaled down to fit, never up) on a black 320x240 canvas — the same
+ * framing VERA's 320x240 8bpp bitmap mode uses — so the preview's framing
+ * matches what real hardware will show even though the pixels themselves
+ * aren't palette-reduced.
+ *
  * Build:
- *   cc -O2 -o vtm_play vtm_play.c $(sdl2-config --cflags --libs) -lm
+ *   cc -O2 -o vtm_play vtm_play.c $(sdl2-config --cflags --libs) -lSDL2_image -lm
  *
  * Usage:
  *   ./vtm_play song.vtm                       play live (Ctrl+C to stop)
  *   ./vtm_play song.vtm --pal                  tick at 50 Hz instead of 60 Hz
+ *   ./vtm_play song.vtm --image cover.png      show artwork in a window while playing
  *   ./vtm_play song.vtm --wav out.wav --seconds 8   render to a WAV file
  */
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_image.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <math.h>
+
+#define CANVAS_W 320
+#define CANVAS_H 240
+#define WINDOW_SCALE 2
 
 #define N_CHANNELS    4
 #define NOTE_HOLD     0
@@ -370,10 +385,30 @@ static int render_wav(Player *p, const char *path, double seconds)
     return 1;
 }
 
+/* Centers src (any size) on a CANVAS_W x CANVAS_H logical canvas, scaling
+ * down to fit if it's larger in either dimension — never scaled up, so a
+ * small image stays crisp with black letterboxing around it rather than
+ * blurring to fill the frame. Matches the framing tools/img2vbm.py bakes
+ * into the Atari-side .vbm file at conversion time. */
+static SDL_Rect centered_dest_rect(int src_w, int src_h)
+{
+    double scale = 1.0;
+    if (src_w > CANVAS_W) scale = (double)CANVAS_W / src_w;
+    if (src_h > CANVAS_H && (double)CANVAS_H / src_h < scale) scale = (double)CANVAS_H / src_h;
+
+    SDL_Rect r;
+    r.w = (int)(src_w * scale);
+    r.h = (int)(src_h * scale);
+    r.x = (CANVAS_W - r.w) / 2;
+    r.y = (CANVAS_H - r.h) / 2;
+    return r;
+}
+
 int main(int argc, char **argv)
 {
     const char *song_path = NULL;
     const char *wav_path = NULL;
+    const char *image_path = NULL;
     double wav_seconds = 8.0;
     int tick_hz = 60;
 
@@ -384,6 +419,8 @@ int main(int argc, char **argv)
             wav_path = argv[++i];
         } else if (strcmp(argv[i], "--seconds") == 0 && i + 1 < argc) {
             wav_seconds = atof(argv[++i]);
+        } else if (strcmp(argv[i], "--image") == 0 && i + 1 < argc) {
+            image_path = argv[++i];
         } else if (!song_path) {
             song_path = argv[i];
         } else {
@@ -392,7 +429,7 @@ int main(int argc, char **argv)
         }
     }
     if (!song_path) {
-        fprintf(stderr, "usage: %s song.vtm [--pal] [--wav out.wav --seconds N]\n", argv[0]);
+        fprintf(stderr, "usage: %s song.vtm [--pal] [--image art.png] [--wav out.wav --seconds N]\n", argv[0]);
         return 1;
     }
 
@@ -424,7 +461,8 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    if (SDL_Init(SDL_INIT_AUDIO) != 0) {
+    Uint32 sdl_flags = SDL_INIT_AUDIO | (image_path ? SDL_INIT_VIDEO : 0);
+    if (SDL_Init(sdl_flags) != 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         free(data);
         return 1;
@@ -447,13 +485,79 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (song.title_len)
-        printf("Playing %.*s (%s) — Ctrl+C to stop.\n", song.title_len, song.title, song_path);
-    else
-        printf("Playing %s — Ctrl+C to stop.\n", song_path);
-    SDL_PauseAudioDevice(dev, 0);
-    for (;;) SDL_Delay(200);
+    SDL_Window   *win = NULL;
+    SDL_Renderer *ren = NULL;
+    SDL_Texture  *tex = NULL;
+    SDL_Rect      dest;
 
+    if (image_path) {
+        SDL_Surface *surf = IMG_Load(image_path);
+        if (!surf) {
+            fprintf(stderr, "cannot load %s: %s\n", image_path, IMG_GetError());
+            SDL_CloseAudioDevice(dev);
+            SDL_Quit();
+            free(data);
+            return 1;
+        }
+
+        win = SDL_CreateWindow(song_path, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                CANVAS_W * WINDOW_SCALE, CANVAS_H * WINDOW_SCALE, 0);
+        ren = win ? SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED) : NULL;
+        if (!win || !ren) {
+            fprintf(stderr, "SDL window/renderer failed: %s\n", SDL_GetError());
+            SDL_FreeSurface(surf);
+            SDL_CloseAudioDevice(dev);
+            SDL_Quit();
+            free(data);
+            return 1;
+        }
+        SDL_RenderSetLogicalSize(ren, CANVAS_W, CANVAS_H);
+
+        dest = centered_dest_rect(surf->w, surf->h);
+        tex = SDL_CreateTextureFromSurface(ren, surf);
+        SDL_FreeSurface(surf);
+        if (!tex) {
+            fprintf(stderr, "SDL_CreateTextureFromSurface failed: %s\n", SDL_GetError());
+            SDL_DestroyRenderer(ren);
+            SDL_DestroyWindow(win);
+            SDL_CloseAudioDevice(dev);
+            SDL_Quit();
+            free(data);
+            return 1;
+        }
+    }
+
+    if (song.title_len)
+        printf("Playing %.*s (%s)", song.title_len, song.title, song_path);
+    else
+        printf("Playing %s", song_path);
+    printf(image_path ? " — close the window or Ctrl+C to stop.\n" : " — Ctrl+C to stop.\n");
+
+    SDL_PauseAudioDevice(dev, 0);
+
+    if (!image_path) {
+        for (;;) SDL_Delay(200);
+    }
+
+    for (;;) {
+        SDL_Event ev;
+        int quit = 0;
+        while (SDL_PollEvent(&ev)) {
+            if (ev.type == SDL_QUIT) quit = 1;
+            if (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_ESCAPE) quit = 1;
+        }
+        if (quit) break;
+
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+        SDL_RenderClear(ren);
+        SDL_RenderCopy(ren, tex, NULL, &dest);
+        SDL_RenderPresent(ren);
+        SDL_Delay(16);
+    }
+
+    SDL_DestroyTexture(tex);
+    SDL_DestroyRenderer(ren);
+    SDL_DestroyWindow(win);
     SDL_CloseAudioDevice(dev);
     SDL_Quit();
     free(data);

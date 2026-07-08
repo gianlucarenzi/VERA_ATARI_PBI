@@ -75,7 +75,9 @@ vera_pbi.atr
 /TESTPLR.COM
 /vera-tests/vtm_player.o
 /vera-tests/vu_pm.o
+/vera-tests/vbm_display.o
 /vera-tests/songs/DEMO.VTM
+/vera-tests/songs/DEMO.VBM
 /vera-tests/songs/*.VTM
 # generated from vera-tests/songs/examples/*.vgz — see vgm-to-atari-workflow.md
 /vera-tests/songs/bubblebobble.vtms

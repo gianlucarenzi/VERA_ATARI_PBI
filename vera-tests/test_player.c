@@ -12,6 +12,13 @@
  * on the top row in reverse video. No other status text — only genuine
  * errors are printed, so they don't flash past unread.
  *
+ * If D1:DEMO.VBM is also present (see vbm.h/vbm_display.s, workflow/
+ * 01-vera-asset-format.md's VBM1 format and tools/img2vbm.py), its artwork
+ * is shown centered on a black background on VERA's own video output —
+ * a completely separate screen from the Atari's own ANTIC/GTIA display
+ * used above for the title/VU meter — for as long as the song plays. No
+ * image file means no change to VERA's display at all.
+ *
  * Build: standalone, no VERA.SYS needed (PSG registers are poked directly,
  * same as test_matrix.c pokes VERA video registers directly).
  */
@@ -21,6 +28,7 @@
 #include "vera_detect.h"
 #include "vtm.h"
 #include "vu_pm.h"
+#include "vbm.h"
 
 #define CH_NONE 255
 #define CH_REG (*(volatile unsigned char *)0x02FC)
@@ -37,6 +45,8 @@
 static unsigned char displayed_level[N_BARS];
 static unsigned char bar_filled;
 static unsigned char title_shown;
+static unsigned char img_bar_filled;
+static unsigned char img_bar_started;
 
 static void wait_vbi(void)
 {
@@ -86,6 +96,26 @@ static void load_progress(const void *song, unsigned long loaded, unsigned long 
     }
 }
 
+/* vbm_load_file()'s progress callback (see vbm.h) — same growing-bar idea
+ * as load_progress() above, on its own row below the song's. A .vbm file
+ * has no title to print first, so the only special-cased first call is
+ * the blank spacer row. */
+static void image_progress(unsigned long loaded, unsigned long total)
+{
+    unsigned char target;
+
+    if (!img_bar_started) {
+        putchar('\n');   /* blank row before the image progress bar */
+        img_bar_started = 1;
+    }
+
+    target = (unsigned char)((loaded * SCREEN_COLS) / total);
+    while (img_bar_filled < target) {
+        putchar(' ' | 0x80);
+        img_bar_filled++;
+    }
+}
+
 static void vu_tick(void)
 {
     unsigned char ch, lvl;
@@ -112,6 +142,7 @@ int main(void)
     void *song;
     int rval=0;
     unsigned char ch;
+    unsigned char have_image;
 
     putchar(125);            /* clear screen, home cursor (ATASCII CLEAR) */
     OS.color2 = 0;           /* background: black */
@@ -135,6 +166,18 @@ int main(void)
         goto err;
     }
 
+    /* Artwork is optional: D1:DEMO.VBM (see workflow/01-vera-asset-
+     * format.md, tools/img2vbm.py) shows on VERA's own video output —
+     * a separate screen from this Atari text/VU-meter display — while
+     * the song plays. If it's missing, playback proceeds exactly as
+     * before with no VERA display-mode change at all. */
+    have_image = vbm_load_file("D1:DEMO.VBM", image_progress);
+    if (have_image) {
+        putchar('\n');
+        putchar('\n');   /* move past the image progress bar row */
+        vbm_init();
+    }
+
     CH_REG = CH_NONE;
     for (ch = 0; ch < N_BARS; ch++)
         displayed_level[ch] = VU_FLOOR_LEVEL;
@@ -146,6 +189,8 @@ int main(void)
         vu_tick();
     }
     vu_pm_done();
+
+    if (have_image) vbm_done();
 
     vtm_stop();
     free(song);

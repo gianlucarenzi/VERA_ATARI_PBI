@@ -101,6 +101,39 @@ asset carrying a redundant copy. Useful once palette offsets (the 4-bit
 "palette offset" field in tile/sprite attributes) are used to multiplex
 several 16-color sub-palettes out of one 256-entry table.
 
+## VBM1 — Full-screen bitmap format (implemented)
+
+A direct dump of VERA's 320x240 8bpp bitmap-mode layer (see the VERA
+reference's "Bitmap mode 1/2/4/8 bpp" and the KERNAL's own
+`320x240@256c Bitmap` at `$0:0000-$1:2BFF`), used by `vera-tests/test_player.c`
+to show artwork on VERA's own video output while a `.vtm` song plays.
+Implemented by `vera-tests/tools/img2vbm.py` (any Pillow-readable source
+image in) and `vera-tests/vbm_display.s`/`vbm_loader.c` (Atari-side loader).
+
+```
+offset 0:   4 bytes  magic "VBM1"
+offset 4:   2 bytes  width  (little-endian) — always 320 today
+offset 6:   2 bytes  height (little-endian) — always 240 today
+offset 8:   1 byte   bits per pixel (always 8 today)
+offset 9:   3 bytes  reserved (0)
+offset 12:  512 bytes  palette, 256 entries x 2 bytes, RGB444
+offset 524: width*height bytes  pixel data, 1 byte/pixel, row-major
+```
+
+Unlike VSP1/VTS1, color index 0 is **not** treated as transparent — this is
+a full-screen bitmap meant to be the only thing on VERA's display while
+shown (see `test_player.c`: layer 1/text is disabled and the whole screen
+goes to this layer), so there's nothing beneath it to show through. The
+source image is always letterboxed onto a black 320x240 canvas at
+conversion time (scaled down to fit if larger, centered either way, never
+scaled up) — the file is always exactly 320x240 regardless of the input
+image's own dimensions, so the Atari-side loader never needs to compute
+centering itself, only stream bytes straight to VRAM.
+
+Width/height fields are stored (rather than assumed) so a future variant
+covering VERA's other bitmap resolution (640x480, 1bpp/2bpp/4bpp) can reuse
+the same magic-plus-header shape without a new format version.
+
 ## Open items
 
 - 4bpp sprite mode (hardware `Mode=0`) is not yet represented in VSP1 — today

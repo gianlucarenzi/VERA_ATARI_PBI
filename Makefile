@@ -177,6 +177,9 @@ VTM_PLAYER_SRC  = vera-tests/vtm_player.s
 VTM_PLAYER_OBJ  = vera-tests/vtm_player.o
 VU_PM_SRC       = vera-tests/vu_pm.s
 VU_PM_OBJ       = vera-tests/vu_pm.o
+VBM_DISPLAY_SRC = vera-tests/vbm_display.s
+VBM_DISPLAY_OBJ = vera-tests/vbm_display.o
+VBM_LOADER_SRC  = vera-tests/vbm_loader.c
 TEST_PLAYER_EXE = TESTPLR.COM
 VTM_COMPILE     = vera-tests/tools/vtm_compile.py
 DEMO_SONG_SRC   = vera-tests/songs/axelf.vtms
@@ -188,11 +191,25 @@ $(VTM_PLAYER_OBJ): $(VTM_PLAYER_SRC) vera-tests/vtm_notes.inc vera_common.inc
 $(VU_PM_OBJ): $(VU_PM_SRC)
 	$(CA65) -I . -I vera-tests -o $@ $<
 
-$(TEST_PLAYER_EXE): $(TEST_PLAYER_SRC) $(VTM_LOADER_SRC) $(VTM_PLAYER_OBJ) $(VU_PM_OBJ) vera-tests/vtm.h vera-tests/vu_pm.h vera-tests/vera_detect.h vera-tests/atari_nosyschk.cfg
-	cl65 -t atari -C vera-tests/atari_nosyschk.cfg -I vera-tests --start-addr 0x2500 -o $(TEST_PLAYER_EXE) $(TEST_PLAYER_SRC) $(VTM_LOADER_SRC) $(VTM_PLAYER_OBJ) $(VU_PM_OBJ)
+$(VBM_DISPLAY_OBJ): $(VBM_DISPLAY_SRC) vera_common.inc
+	$(CA65) -I . -I vera-tests -o $@ $<
+
+$(TEST_PLAYER_EXE): $(TEST_PLAYER_SRC) $(VTM_LOADER_SRC) $(VTM_PLAYER_OBJ) $(VU_PM_OBJ) $(VBM_DISPLAY_OBJ) $(VBM_LOADER_SRC) vera-tests/vtm.h vera-tests/vu_pm.h vera-tests/vbm.h vera-tests/vera_detect.h vera-tests/atari_nosyschk.cfg
+	cl65 -t atari -C vera-tests/atari_nosyschk.cfg -I vera-tests --start-addr 0x2500 -o $(TEST_PLAYER_EXE) $(TEST_PLAYER_SRC) $(VTM_LOADER_SRC) $(VTM_PLAYER_OBJ) $(VU_PM_OBJ) $(VBM_DISPLAY_OBJ) $(VBM_LOADER_SRC)
 
 $(DEMO_SONG_BIN): $(DEMO_SONG_SRC) $(VTM_COMPILE)
 	$(PYTHON) $(VTM_COMPILE) $(DEMO_SONG_SRC) $(DEMO_SONG_BIN)
+
+# Optional artwork to go with $(DEMO_SONG_BIN) (see vera-tests/vbm.h and
+# workflow/01-vera-asset-format.md's VBM1 format) — not built by default
+# (DEMO_IMAGE_SRC is empty), pick a source image explicitly:
+#   make DEMO_IMAGE_SRC=path/to/cover.png vera-tests/songs/DEMO.VBM
+IMG2VBM         = vera-tests/tools/img2vbm.py
+DEMO_IMAGE_SRC  =
+DEMO_IMAGE_BIN  = vera-tests/songs/DEMO.VBM
+
+$(DEMO_IMAGE_BIN): $(DEMO_IMAGE_SRC) $(IMG2VBM)
+	$(PYTHON) $(IMG2VBM) $(DEMO_IMAGE_SRC) $(DEMO_IMAGE_BIN)
 
 # Resolution-specific bundled variants (suffix: 4=40x30, 8=80x30, 6=80x60)
 TEST_EXES     = TEST4.COM TEST8.COM TEST6.COM
@@ -310,7 +327,7 @@ clean: clean_objs
 		$(LOADER_LBL) \
 		$(ALL_TEST_EXES) \
 		_TEST.COM _TESTGS.COM _TESTMAZE.COM _TESTMTX.COM \
-		$(VTM_PLAYER_OBJ) $(VU_PM_OBJ) $(DEMO_SONG_BIN) \
+		$(VTM_PLAYER_OBJ) $(VU_PM_OBJ) $(VBM_DISPLAY_OBJ) $(DEMO_SONG_BIN) \
 		$(SYS4030) $(SYS8030) $(SYS8060) \
 		.dos20
 
