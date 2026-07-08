@@ -17,7 +17,10 @@ DOS.SYS + DUP.SYS + TESTPLR.COM + DEMO.VTM --[dir2atr]--> disk.atr --> atari800 
 `TESTPLR.COM` (built from `test_player.c`) already contains the 4-channel
 Player/Missile VU meter and the title-banner screen — there is no separate
 "enable VU meter" step, it runs automatically whenever the program plays a
-song.
+song. Optionally pair it with a `DEMO.VBM` picture (step 8) shown on
+VERA's own video output while the song plays, and/or rename it to
+`AUTORUN.SYS` for a disk that boots straight into the demo with no typing
+— see "Complete example" near the end for both together in one 130K disk.
 
 ## Worked example: Bubble Bobble (MSX intro + main theme)
 
@@ -202,10 +205,175 @@ title centered in reverse video, then plays — the 4 vertical VU-meter bars
 animate live under the title without touching the text screen itself.
 Press any key to stop and return to DOS.
 
+## 8. Optional: show artwork on VERA's own screen
+
+VERA drives its own separate video output (a second monitor/window,
+nothing to do with the Atari's own ANTIC/GTIA display used above) —
+`test_player.c` will show a picture there, centered on black, for as long
+as the song plays, if `D1:DEMO.VBM` is present alongside `D1:DEMO.VTM`.
+No `.VBM` file means no change to VERA's display at all; this step is
+entirely optional and independent of everything above.
+
+```sh
+python3 vera-tests/tools/img2vbm.py cover.png vera-tests/songs/DEMO.VBM
+```
+```
+vera-tests/songs/DEMO.VBM: 77334 bytes (320x240, 8bpp)
+```
+
+Or, to pick the source image the same way step 5 lets you pick the song:
+
+```sh
+make DEMO_IMAGE_SRC=path/to/cover.png vera-tests/songs/DEMO.VBM
+```
+
+Any Pillow-readable format works (PNG/JPEG/BMP/GIF/...). The image is
+scaled down to fit within 320x240 if it's larger in either dimension
+(never scaled up), centered, and letterboxed in black — the output file
+is always exactly 320x240, 8bpp, regardless of the source's own
+dimensions or aspect ratio. Its byte size is therefore always the same,
+give or take the embedded name (see next paragraph): `12 + name_len + 512
++ 76800`, i.e. **77324 + name_len bytes** — `img2vbm.py` prints the exact
+total every time, so there's never a need to compute it by hand.
+
+The file also carries a short name (same idea as `DEMO.VTM`'s `TITLE`) —
+defaults to the source image's filename, or pass one explicitly:
+
+```sh
+python3 vera-tests/tools/img2vbm.py cover.png DEMO.VBM "Bubble Bobble"
+```
+
+`test_player.c` prints this name centered in reverse video on the Atari's
+own screen (same treatment as the song title) as soon as it's read, then
+shows a loading progress bar underneath while the rest of the image
+streams into VRAM — the image itself never touches Atari main RAM (see
+`vbm_loader.c`: it streams straight to VRAM in 128-byte chunks), only
+VERA's own video memory, so it doesn't compete with `DEMO.VTM`'s own RAM
+budget covered in the Troubleshooting section below.
+
+## Complete example: a self-booting disk with audio *and* artwork in 130K
+
+Putting everything together — the Bubble Bobble audio example from above,
+its cover art (`vera-tests/pictures/bubble-bob.png`), and a disk that
+boots straight into the demo with no typing required — while still
+fitting the whole thing on a single 130K disk.
+
+**Rename `TESTPLR.COM` to `AUTORUN.SYS`** and DOS 2.0 runs it automatically
+right after `DOS.SYS` loads, with no `DUP.SYS` menu step at all — which
+also means `DUP.SYS` itself doesn't need to be on the disk (it's only
+ever loaded when *no* `AUTORUN.SYS` is present, or once a running program
+exits back to it), reclaiming the ~41 sectors it would otherwise cost.
+That headroom matters: this combination is large enough to need it.
+
+```sh
+# audio: intro + looping main theme, PAL row rate
+python3 vera-tests/tools/vgm2vtms.py vera-tests/songs/examples/bubblebobble-01-intro.vgz \
+                                       vera-tests/songs/examples/bubblebobble-02-maintheme.vgz \
+                                       /tmp/bb.vtms --pal
+python3 vera-tests/tools/vtm_compile.py /tmp/bb.vtms /tmp/DEMO.VTM
+
+# artwork: already 320x240, so img2vbm.py only needs to quantize/pack it
+python3 vera-tests/tools/img2vbm.py vera-tests/pictures/bubble-bob.png /tmp/DEMO.VBM
+
+# build the player and stage the disk contents
+make TESTPLR.COM
+mkdir -p /tmp/bbdisk
+cp .dos20/DOS.SYS /tmp/bbdisk/
+cp TESTPLR.COM /tmp/bbdisk/AUTORUN.SYS
+cp /tmp/DEMO.VTM /tmp/DEMO.VBM /tmp/bbdisk/
+
+# build the disk, then repair dir2atr's large-disk bugs (see Troubleshooting)
+dir2atr -E -b Dos20 /tmp/bbdisk.atr /tmp/bbdisk
+python3 vera-tests/tools/fix_atr_vtoc.py /tmp/bbdisk.atr
+```
+```
+fixing directory entry flags for 'DEMO.VBM': 0x03 -> 0x42
+fixing directory entry flags for 'DEMO.VTM': 0x03 -> 0x42
+fixing directory entry flags for 'DOS.SYS': 0x03 -> 0x42
+patching boot sector's DOS.SYS pointer: sector 906 -> 905
+/tmp/bbdisk.atr: VTOC fixed — 0 free sectors (of 944 trackable, 944 used)
+```
+
+```sh
+atari800 -verax16 -verax16-rom /path/to/vera_pbi_handler.rom \
+          -pal -volume 100 -xe /tmp/bbdisk.atr
+```
+
+Boots straight into the demo: title + progress bar + VU meters on the
+Atari's own screen, the cover art on VERA's, no keypresses needed.
+`0 free sectors` here is a correct, accurate statement (not the dir2atr
+bug — see Troubleshooting) — this particular combination fills a 130K
+disk essentially exactly.
+
+### How big can the audio file be?
+
+The image's size is fixed and self-reported (previous section); DOS.SYS
+is a constant ~4875 bytes; `AUTORUN.SYS`'s size moves a little as the
+player's code changes. That leaves the audio file as the one size that
+varies per-song and needs a budget:
+
+```
+944 total sector numbers a single VTOC can ever represent (0-943)
+- 13 reserved (sector 0 itself + boot sectors 1-3 + VTOC sector 360 + directory 361-368)
+= 931 sectors available for actual file data
+
+available_for_audio_sectors = 931 - ceil(DOS.SYS_bytes / 125)
+                                   - ceil(AUTORUN.SYS_bytes / 125)
+                                   - ceil(DEMO.VBM_bytes / 125)
+
+max_audio_bytes = available_for_audio_sectors * 125
+```
+
+Each sector holds 125 usable data bytes (128 minus 3 link/bookkeeping
+bytes) — this is DOS 2.0's on-disk format, not something any of this
+project's tools choose.
+
+With this example's actual sizes (`DOS.SYS`=4875B/39 sectors,
+`AUTORUN.SYS`=12005B/97 sectors, `DEMO.VBM`=77334B/619 sectors):
+
+```
+931 - 39 - 97 - 619 = 176 sectors available
+176 * 125 = 22000 bytes maximum for DEMO.VTM
+```
+
+The actual `DEMO.VTM` above is 21955 bytes — comfortably inside that
+budget (176 sectors either way, since 21955 and 22000 both round up to
+176 × 125-byte sectors; there just happens to be no 177th sector free to
+spare). If a bigger conversion doesn't fit, re-run `vgm2vtms.py` with
+`--pal` (fewer rows/sec, see step 2) or trim the source VGM — the image
+can't be shrunk to make room, its size is always 320x240x8bpp regardless
+of content.
+
+If *no image* is on the disk at all, skip the `DEMO.VBM` term entirely —
+`931 - dos_sectors - autorun_sectors` sectors are available for audio
+alone, which is why a 22KB `DEMO.VTM` fit comfortably on its own in the
+step 6 disk earlier in this guide, without needing any of this section's
+`AUTORUN.SYS`/space-budget machinery at all.
+
 ## Troubleshooting
 
 - **Disk boots into a reset loop**: density mismatch — rebuild with
   `dir2atr -E` (see step 6), not `-D`.
+- **`DIR` shows "000 FREE SECTORS" even though the disk clearly isn't
+  full, or a file that's definitely on the disk doesn't show up in `DIR`
+  at all**: `dir2atr` (AtariSIO) has a real bug on Enhanced Density disks
+  once the files use enough sectors to approach the ~720-943 range a
+  single VTOC sector can represent — it also corrupts the flags byte on
+  one or more directory entries. `tools/fix_atr_vtoc.py disk.atr` re-
+  derives the correct picture from the files' actual sector chains and
+  patches the disk in place; run it after every `dir2atr` invocation on a
+  disk with a `DEMO.VBM` on it (small disks without one rarely hit this).
+- **Emulator/hardware locks up or resets immediately on boot, before
+  anything from the program ever appears** (as opposed to a normal DOS
+  2.0 reset loop from a density mismatch, above): if the disk uses
+  `AUTORUN.SYS` and was patched by `fix_atr_vtoc.py`, make sure you're
+  running the version of that script that patches boot sector 1's
+  DOS.SYS pointer (byte offset 15) — it needs updating whenever `DOS.SYS`
+  itself gets relocated to close the wasted-sector gap, since the boot
+  process reads that raw sector number directly, before it's able to look
+  anything up by name. An older copy of the script that only fixed the
+  VTOC/flags would build a disk that looks fine on paper but crashes at
+  the earliest possible moment.
 - **Whole song plays but sounds too quiet**: pass `-volume 100` to
   `atari800`, and/or check the `.vtms` instruments have `VOL=63`.
 - **A whole pattern/section is silent, in isolation it "shouldn't be"**:
