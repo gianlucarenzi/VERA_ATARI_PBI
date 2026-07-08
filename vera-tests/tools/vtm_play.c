@@ -17,10 +17,18 @@
  * BMP/...) — unlike the Atari side (see vbm_display.s/tools/img2vbm.py),
  * the PC preview has no 256-color-palette hardware constraint, so there's
  * no need for a preconverted intermediate format here. It's centered
- * (scaled down to fit, never up) on a black 320x240 canvas — the same
+ * (scaled down to fit, never up) on a black 320x240 area — the same
  * framing VERA's 320x240 8bpp bitmap mode uses — so the preview's framing
  * matches what real hardware will show even though the pixels themselves
  * aren't palette-reduced.
+ *
+ * On real hardware the title/VU meter (Atari's own screen) and the artwork
+ * (VERA's own, separate video output) are two different monitors — one
+ * PC window can't be two monitors, so instead it's one window stacked
+ * vertically: the artwork on top (320x240, as above), a 4-channel VU
+ * meter of the same kind test_player.c draws with Player/Missile graphics
+ * underneath (320x128), reusing the live per-channel volume already
+ * computed for mixing.
  *
  * Build:
  *   cc -O2 -o vtm_play vtm_play.c $(sdl2-config --cflags --libs) -lSDL2_image -lm
@@ -28,7 +36,7 @@
  * Usage:
  *   ./vtm_play song.vtm                       play live (Ctrl+C to stop)
  *   ./vtm_play song.vtm --pal                  tick at 50 Hz instead of 60 Hz
- *   ./vtm_play song.vtm --image cover.png      show artwork in a window while playing
+ *   ./vtm_play song.vtm --image cover.png      show artwork + VU meter in a window
  *   ./vtm_play song.vtm --wav out.wav --seconds 8   render to a WAV file
  */
 #include <SDL2/SDL.h>
@@ -40,7 +48,9 @@
 #include <math.h>
 
 #define CANVAS_W 320
-#define CANVAS_H 240
+#define IMAGE_H  240
+#define VU_H     128             /* extra height below the artwork for the VU meter */
+#define CANVAS_H (IMAGE_H + VU_H)
 #define WINDOW_SCALE 2
 
 #define N_CHANNELS    4
@@ -385,23 +395,88 @@ static int render_wav(Player *p, const char *path, double seconds)
     return 1;
 }
 
-/* Centers src (any size) on a CANVAS_W x CANVAS_H logical canvas, scaling
- * down to fit if it's larger in either dimension — never scaled up, so a
- * small image stays crisp with black letterboxing around it rather than
+/* Centers src (any size) on the CANVAS_W x IMAGE_H artwork area (the top
+ * of the window — the VU meter strip below is separate), scaling down to
+ * fit if it's larger in either dimension — never scaled up, so a small
+ * image stays crisp with black letterboxing around it rather than
  * blurring to fill the frame. Matches the framing tools/img2vbm.py bakes
  * into the Atari-side .vbm file at conversion time. */
 static SDL_Rect centered_dest_rect(int src_w, int src_h)
 {
     double scale = 1.0;
     if (src_w > CANVAS_W) scale = (double)CANVAS_W / src_w;
-    if (src_h > CANVAS_H && (double)CANVAS_H / src_h < scale) scale = (double)CANVAS_H / src_h;
+    if (src_h > IMAGE_H && (double)IMAGE_H / src_h < scale) scale = (double)IMAGE_H / src_h;
 
     SDL_Rect r;
     r.w = (int)(src_w * scale);
     r.h = (int)(src_h * scale);
     r.x = (CANVAS_W - r.w) / 2;
-    r.y = (CANVAS_H - r.h) / 2;
+    r.y = (IMAGE_H - r.h) / 2;
     return r;
+}
+
+/* VU meter: 4 bars, bottom-anchored, growing upward, same 8-band green-to-
+ * red gradient idea as vu_pm.s's Player/Missile meter on the Atari side —
+ * band 0 here is the top-most/loudest (red), band VU_BANDS-1 is the
+ * bottom/baseline (green, shown as soon as a channel has ever sounded). */
+#define VU_BANDS  8
+#define VU_BAND_H (VU_H / VU_BANDS)
+#define VU_FLOOR  3               /* out of 63 — bars never fully vanish */
+#define VU_DECAY  6               /* per-rendered-frame falloff */
+
+static double vu_level[N_CHANNELS];   /* 0-63, smoothed for display */
+
+static const uint8_t vu_colors[VU_BANDS][3] = {
+    {220, 30, 30},    /* red    (top)    */
+    {220, 90, 20},
+    {220, 90, 20},
+    {220, 170, 20},
+    {170, 210, 20},
+    {170, 210, 20},
+    {40, 210, 40},
+    {40, 210, 40},    /* green (bottom) */
+};
+
+/* Reads the Player's live per-channel volume (same vol_pan bits mix_sample()
+ * uses) — no locking against the audio thread that writes it: a torn read
+ * of a single byte isn't possible on any real CPU, and a VU meter doesn't
+ * need sample-accurate timing anyway. */
+static void vu_tick(const Player *p)
+{
+    int i;
+    for (i = 0; i < N_CHANNELS; i++) {
+        double raw = p->ch[i].vol_pan & 0x3F;
+        if (raw >= vu_level[i]) {
+            vu_level[i] = raw;
+        } else if (vu_level[i] > VU_FLOOR + VU_DECAY) {
+            vu_level[i] -= VU_DECAY;
+        } else {
+            vu_level[i] = VU_FLOOR;
+        }
+    }
+}
+
+static void draw_vu_meters(SDL_Renderer *ren)
+{
+    int ch, band, slot_w, bar_w;
+
+    slot_w = CANVAS_W / N_CHANNELS;
+    bar_w = slot_w - 24;
+
+    for (ch = 0; ch < N_CHANNELS; ch++) {
+        int lit = ((int)vu_level[ch] * VU_BANDS) / 63;
+        if (lit == 0 && vu_level[ch] > 0) lit = 1;
+
+        for (band = VU_BANDS - 1; band >= VU_BANDS - lit; band--) {
+            SDL_Rect r;
+            r.x = ch * slot_w + (slot_w - bar_w) / 2;
+            r.y = IMAGE_H + band * VU_BAND_H;
+            r.w = bar_w;
+            r.h = VU_BAND_H;
+            SDL_SetRenderDrawColor(ren, vu_colors[band][0], vu_colors[band][1], vu_colors[band][2], 255);
+            SDL_RenderFillRect(ren, &r);
+        }
+    }
 }
 
 int main(int argc, char **argv)
@@ -548,9 +623,12 @@ int main(int argc, char **argv)
         }
         if (quit) break;
 
+        vu_tick(&player);
+
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
         SDL_RenderCopy(ren, tex, NULL, &dest);
+        draw_vu_meters(ren);
         SDL_RenderPresent(ren);
         SDL_Delay(16);
     }
