@@ -17,6 +17,10 @@ void vtm_tick(void);
 /* vtm_stop() — silence all channels and stop playback. */
 void vtm_stop(void);
 
+/* vtm_level(ch) — current live volume (0-63) of channel ch (0-3). For a
+ * VU meter: call once per channel after each vtm_tick(). */
+unsigned char vtm_level(unsigned char ch);
+
 /* vtm_load_file() — read a whole .vtm file into a malloc'd buffer.
  * Returns NULL on any I/O error; caller owns the buffer (free() when done). */
 void *vtm_load_file(const char *filename);

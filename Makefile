@@ -175,6 +175,8 @@ TEST_PLAYER_SRC = vera-tests/test_player.c
 VTM_LOADER_SRC  = vera-tests/vtm_loader.c
 VTM_PLAYER_SRC  = vera-tests/vtm_player.s
 VTM_PLAYER_OBJ  = vera-tests/vtm_player.o
+VU_PM_SRC       = vera-tests/vu_pm.s
+VU_PM_OBJ       = vera-tests/vu_pm.o
 TEST_PLAYER_EXE = TESTPLR.COM
 VTM_COMPILE     = vera-tests/tools/vtm_compile.py
 DEMO_SONG_SRC   = vera-tests/songs/axelf.vtms
@@ -183,8 +185,11 @@ DEMO_SONG_BIN   = vera-tests/songs/DEMO.VTM
 $(VTM_PLAYER_OBJ): $(VTM_PLAYER_SRC) vera-tests/vtm_notes.inc vera_common.inc
 	$(CA65) -I . -I vera-tests -o $@ $<
 
-$(TEST_PLAYER_EXE): $(TEST_PLAYER_SRC) $(VTM_LOADER_SRC) $(VTM_PLAYER_OBJ) vera-tests/vtm.h vera-tests/vera_detect.h
-	cl65 -t atari -C vera-tests/atari_nosyschk.cfg -I vera-tests --start-addr 0x3000 -o $(TEST_PLAYER_EXE) $(TEST_PLAYER_SRC) $(VTM_LOADER_SRC) $(VTM_PLAYER_OBJ)
+$(VU_PM_OBJ): $(VU_PM_SRC)
+	$(CA65) -I . -I vera-tests -o $@ $<
+
+$(TEST_PLAYER_EXE): $(TEST_PLAYER_SRC) $(VTM_LOADER_SRC) $(VTM_PLAYER_OBJ) $(VU_PM_OBJ) vera-tests/vtm.h vera-tests/vu_pm.h vera-tests/vera_detect.h
+	cl65 -t atari -C vera-tests/atari_nosyschk.cfg -I vera-tests --start-addr 0x3000 -o $(TEST_PLAYER_EXE) $(TEST_PLAYER_SRC) $(VTM_LOADER_SRC) $(VTM_PLAYER_OBJ) $(VU_PM_OBJ)
 
 $(DEMO_SONG_BIN): $(DEMO_SONG_SRC) $(VTM_COMPILE)
 	$(PYTHON) $(VTM_COMPILE) $(DEMO_SONG_SRC) $(DEMO_SONG_BIN)
@@ -305,7 +310,7 @@ clean: clean_objs
 		$(LOADER_LBL) \
 		$(ALL_TEST_EXES) \
 		_TEST.COM _TESTGS.COM _TESTMAZE.COM _TESTMTX.COM \
-		$(VTM_PLAYER_OBJ) $(DEMO_SONG_BIN) \
+		$(VTM_PLAYER_OBJ) $(VU_PM_OBJ) $(DEMO_SONG_BIN) \
 		$(SYS4030) $(SYS8030) $(SYS8060) \
 		.dos20
 

@@ -16,10 +16,11 @@
 ;   unsigned char vtm_init(const void *song);   1 = ok, 0 = bad/unsupported file
 ;   void          vtm_tick(void);               call once per VBI frame
 ;   void          vtm_stop(void);                silence all channels
+;   unsigned char vtm_level(unsigned char ch);   current volume (0-63) of channel ch
 
     .setcpu "6502"
 
-    .export _vtm_init, _vtm_tick, _vtm_stop
+    .export _vtm_init, _vtm_tick, _vtm_stop, _vtm_level
 
     .include "atari.inc"
     .include "vera_common.inc"
@@ -276,6 +277,19 @@ _vtm_stop:
     lda #0
     sta PBI_LATCH
     dec CRITIC
+    rts
+
+; ============================================================================
+; _vtm_level(ch) — A = channel 0-3 (cc65 default calling convention: sole
+; byte argument in A). Returns the channel's current live volume (0-63,
+; pan bits masked off) — e.g. for a VU meter. No CRITIC/PBI access needed,
+; vtm_chan_vol is plain RAM kept up to date by envelope_tick/write_note_on.
+; ============================================================================
+
+_vtm_level:
+    tax
+    lda vtm_chan_vol,x
+    and #$3F
     rts
 
 ; ============================================================================
