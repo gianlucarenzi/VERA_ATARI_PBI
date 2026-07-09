@@ -22,6 +22,64 @@ VERA's own video output while the song plays, and/or rename it to
 `AUTORUN.SYS` for a disk that boots straight into the demo with no typing
 — see "Complete example" near the end for both together in one 130K disk.
 
+## Shortcut: `vgm_to_atari_demo.sh`
+
+`vera-tests/tools/vgm_to_atari_demo.sh` automates steps 2-8 below in one
+command. Given one or more VGM/VGZ files and a cover image, it always
+builds the PC preview (steps 2-4), and — only if the compiled song is
+small enough to comfortably share a 130K disk with the image (<=22K, the
+same budget the worked example below lands under) — also builds the
+self-booting Atari disk (steps 5-8), reusing the exact DOS 2.0S +
+`AUTORUN.SYS` + `fix_atr_vtoc.py` pipeline from the "Complete example"
+section further down. It does **not** build a real VTOC2/DOS 2.5 disk —
+`dir2atr`'s `-b Dos25` option exists but isn't wired up or tested
+anywhere in this project; `fix_atr_vtoc.py` only knows how to repair a
+VTOC1 (DOS 2.0S) disk.
+
+```sh
+vera-tests/tools/vgm_to_atari_demo.sh --pal --image cover.png song1.vgm [song2.vgz ...]
+```
+
+Options:
+
+- `--image PATH` (required) — cover artwork, any Pillow-readable format
+  (PNG/JPEG/BMP/GIF/...); passed straight to `vtm_play`'s `--image` for
+  the PC preview, and separately run through `img2vbm.py` for VERA if the
+  Atari disk gets built.
+- `-o, --out DIR` — output directory (default: `build/vgm-atari/<name>`
+  under the repo root).
+- `-n, --name NAME` — base name for generated files (default: derived
+  from the first audio file's own name).
+- `--title NAME` — display name embedded in the `.vbm` artwork (default:
+  `img2vbm.py`'s own default, the image's filename).
+- `--pal` — 50 Hz row rate; must match whatever `-pal`/no-`-pal` you boot
+  with later (same NTSC/PAL caveat as step 2 below).
+- `--play` — actually launch the PC preview at the end instead of just
+  printing the ready-to-run command.
+- `-h, --help`
+
+Always produced: `<out>/<name>.vtms`, `<out>/DEMO.VTM`, `<out>/vtm_play`.
+Only if `DEMO.VTM` is `<=` 22K: `<out>/DEMO.VBM`, `<out>/TESTPLR.COM`,
+`<out>/<name>.atr` (bootable). If the compiled song comes out bigger, the
+script skips the disk-building steps and says so — re-run with `--pal`
+for a smaller file, or trim the source VGM, per "How big can the audio
+file be?" further down.
+
+Re-running the Bubble Bobble worked example (next section) through the
+script instead of by hand:
+
+```sh
+vera-tests/tools/vgm_to_atari_demo.sh --pal \
+    --image vera-tests/pictures/bubble-bob.png \
+    --name bubblebobble --out /tmp/bbdemo \
+    vera-tests/songs/examples/bubblebobble-01-intro.vgz \
+    vera-tests/songs/examples/bubblebobble-02-maintheme.vgz
+```
+
+produces the identical 21955-byte `DEMO.VTM`, the same `fix_atr_vtoc.py`
+repair log, and prints ready-to-run `vtm_play`/`atari800` commands at the
+end — everything the manual steps below do, in one shot.
+
 ## Worked example: Bubble Bobble (MSX intro + main theme)
 
 `vera-tests/songs/examples/` has two real VGZ rips (MSX AY-3-8910, from
