@@ -150,7 +150,7 @@ else
 fi
 
 echo "== building TESTPLR.COM (make) =="
-make -C "$REPO_ROOT" "$REPO_ROOT/.dos20/DOS.SYS" TESTPLR.COM
+make -C "$REPO_ROOT" .dos20/DOS.SYS TESTPLR.COM
 cp "$REPO_ROOT/TESTPLR.COM" "$OUT_DIR/TESTPLR.COM"
 
 echo "== staging disk contents =="
