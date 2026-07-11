@@ -14,13 +14,13 @@
  * decisions; not a substitute for a final listen on real hardware/emulator.
  *
  * --image loads the ORIGINAL artwork straight through SDL2_image (PNG/JPEG/
- * BMP/...) — unlike the Atari side (see vbm_display.s/tools/img2vbm.py),
- * the PC preview has no 256-color-palette hardware constraint, so there's
- * no need for a preconverted intermediate format here. It's centered
+ * BMP/...) or a VBM2 file (VERA Bitmap). Unlike the Atari side
+ * (see vbm_display.s/tools/img2vbm.py), the PC preview has no 256-color-
+ * palette hardware constraint, so for non-VBM formats there's no need for
+ * a preconverted format — just load and display directly. It's centered
  * (scaled down to fit, never up) on a black 320x240 area — the same
  * framing VERA's 320x240 8bpp bitmap mode uses — so the preview's framing
- * matches what real hardware will show even though the pixels themselves
- * aren't palette-reduced.
+ * matches what real hardware will show.
  *
  * On real hardware the title/VU meter (Atari's own screen) and the artwork
  * (VERA's own, separate video output) are two different monitors — one
@@ -117,6 +117,78 @@ static uint16_t note_freq_word(int note_index)
     if (w < 0) w = 0;
     if (w > 65535) w = 65535;
     return (uint16_t)w;
+}
+
+/* Forward declaration */
+static uint8_t *load_file(const char *path, size_t *out_size);
+
+/* VBM (VERA Bitmap) file loader.
+ * VBM2 format: magic(4) + width(2) + height(2) + bpp(1) + name_len(1) + reserved(2)
+ *              + name(variable) + palette(512) + pixels(width*height)
+ * Palette: 256 entries x 2 bytes each
+ *   byte0 = GGGGBBBB, byte1 = 0000RRRR
+ * Returns NULL if not a valid VBM file. */
+static SDL_Surface *vbm_load_surface(const char *path)
+{
+    size_t size;
+    uint8_t *data = load_file(path, &size);
+    if (!data) return NULL;
+
+    if (size < 12 || memcmp(data, "VBM2", 4) != 0) {
+        free(data);
+        return NULL;
+    }
+
+    uint16_t w = *(uint16_t *)(data + 4);
+    uint16_t h = *(uint16_t *)(data + 6);
+    uint8_t bpp = data[8];
+    uint8_t name_len = data[9];
+
+    /* Validate basic structure */
+    if (bpp != 8 || w > 320 || h > 240) {
+        free(data);
+        return NULL;
+    }
+
+    size_t palette_offset = 12 + name_len;
+    size_t pixel_offset = palette_offset + 512;
+    size_t expected_size = pixel_offset + (w * h);
+
+    if (size < expected_size) {
+        free(data);
+        return NULL;
+    }
+
+    /* Create surface: 8bpp indexed */
+    SDL_Surface *surf = SDL_CreateRGBSurface(0, w, h, 8, 0, 0, 0, 0);
+    if (!surf) {
+        free(data);
+        return NULL;
+    }
+
+    /* Set palette: convert from VERA format (GGGGBBBB/0000RRRR) to SDL RGB */
+    SDL_Color palette[256];
+    for (int i = 0; i < 256; i++) {
+        uint8_t byte0 = data[palette_offset + i * 2];
+        uint8_t byte1 = data[palette_offset + i * 2 + 1];
+
+        uint8_t g4 = (byte0 >> 4) & 0xF;
+        uint8_t b4 = byte0 & 0xF;
+        uint8_t r4 = byte1 & 0xF;
+
+        /* Convert from 4-bit to 8-bit (multiply by 17: 0xF * 17 = 0xFF) */
+        palette[i].r = r4 * 17;
+        palette[i].g = g4 * 17;
+        palette[i].b = b4 * 17;
+        palette[i].a = 255;
+    }
+    SDL_SetPaletteColors(surf->format->palette, palette, 0, 256);
+
+    /* Copy pixel data */
+    memcpy(surf->pixels, data + pixel_offset, w * h);
+
+    free(data);
+    return surf;
 }
 
 static uint8_t *load_file(const char *path, size_t *out_size)
@@ -530,7 +602,7 @@ int main(int argc, char **argv)
         }
     }
     if (!song_path) {
-        fprintf(stderr, "usage: %s song.vtm [--pal] [--image art.png] [--scale=N] [--wav out.wav --seconds N]\n", argv[0]);
+        fprintf(stderr, "usage: %s song.vtm [--pal] [--image art.png|art.vbm] [--scale=N] [--wav out.wav --seconds N]\n", argv[0]);
         return 1;
     }
 
@@ -592,13 +664,29 @@ int main(int argc, char **argv)
     SDL_Rect      dest;
 
     if (image_path) {
-        SDL_Surface *surf = IMG_Load(image_path);
-        if (!surf) {
-            fprintf(stderr, "cannot load %s: %s\n", image_path, IMG_GetError());
-            SDL_CloseAudioDevice(dev);
-            SDL_Quit();
-            free(data);
-            return 1;
+        SDL_Surface *surf = NULL;
+
+        /* Try loading as VBM first (if it ends with .vbm or .VBM) */
+        const char *ext = strrchr(image_path, '.');
+        if (ext && (strcasecmp(ext, ".vbm") == 0)) {
+            surf = vbm_load_surface(image_path);
+            if (!surf) {
+                fprintf(stderr, "cannot load VBM file %s\n", image_path);
+                SDL_CloseAudioDevice(dev);
+                SDL_Quit();
+                free(data);
+                return 1;
+            }
+        } else {
+            /* Load as standard image (PNG, JPEG, etc.) via SDL_image */
+            surf = IMG_Load(image_path);
+            if (!surf) {
+                fprintf(stderr, "cannot load %s: %s\n", image_path, IMG_GetError());
+                SDL_CloseAudioDevice(dev);
+                SDL_Quit();
+                free(data);
+                return 1;
+            }
         }
 
         int init_scale = calculate_window_scale(force_scale);
