@@ -51,7 +51,6 @@
 #define IMAGE_H  240
 #define VU_H     128             /* extra height below the artwork for the VU meter */
 #define CANVAS_H (IMAGE_H + VU_H)
-#define WINDOW_SCALE 2
 
 #define N_CHANNELS    4
 #define NOTE_HOLD     0
@@ -395,6 +394,29 @@ static int render_wav(Player *p, const char *path, double seconds)
     return 1;
 }
 
+/* Calculate window scale dynamically based on display height.
+ * Use at most 3/4 of the screen height, maintain aspect ratio.
+ * If force_scale > 0, use that value instead. */
+static int calculate_window_scale(int force_scale)
+{
+    if (force_scale > 0) return force_scale;
+
+    SDL_DisplayMode mode;
+    if (SDL_GetDisplayMode(0, 0, &mode) != 0) {
+        /* fallback to scale 1 if display mode query fails */
+        return 1;
+    }
+
+    /* Maximum usable height is 3/4 of display height */
+    int max_height = (int)(mode.h * 0.75);
+
+    /* Calculate scale needed to fit CANVAS_H into max_height */
+    int scale = max_height / CANVAS_H;
+
+    /* Ensure at least scale of 1 */
+    return scale > 1 ? scale : 1;
+}
+
 /* Centers src (any size) on the CANVAS_W x IMAGE_H artwork area (the top
  * of the window — the VU meter strip below is separate), scaling down to
  * fit if it's larger in either dimension — never scaled up, so a small
@@ -486,6 +508,7 @@ int main(int argc, char **argv)
     const char *image_path = NULL;
     double wav_seconds = 8.0;
     int tick_hz = 60;
+    int force_scale = 0;  /* 0 means auto-calculate */
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--pal") == 0) {
@@ -496,6 +519,9 @@ int main(int argc, char **argv)
             wav_seconds = atof(argv[++i]);
         } else if (strcmp(argv[i], "--image") == 0 && i + 1 < argc) {
             image_path = argv[++i];
+        } else if (strncmp(argv[i], "--scale=", 8) == 0) {
+            force_scale = atoi(argv[i] + 8);
+            if (force_scale < 1) force_scale = 1;
         } else if (!song_path) {
             song_path = argv[i];
         } else {
@@ -504,7 +530,7 @@ int main(int argc, char **argv)
         }
     }
     if (!song_path) {
-        fprintf(stderr, "usage: %s song.vtm [--pal] [--image art.png] [--wav out.wav --seconds N]\n", argv[0]);
+        fprintf(stderr, "usage: %s song.vtm [--pal] [--image art.png] [--scale=N] [--wav out.wav --seconds N]\n", argv[0]);
         return 1;
     }
 
@@ -575,8 +601,10 @@ int main(int argc, char **argv)
             return 1;
         }
 
+        int init_scale = calculate_window_scale(force_scale);
         win = SDL_CreateWindow(song_path, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                                CANVAS_W * WINDOW_SCALE, CANVAS_H * WINDOW_SCALE, 0);
+                                CANVAS_W * init_scale, CANVAS_H * init_scale,
+                                SDL_WINDOW_RESIZABLE);
         ren = win ? SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED) : NULL;
         if (!win || !ren) {
             fprintf(stderr, "SDL window/renderer failed: %s\n", SDL_GetError());
@@ -620,6 +648,12 @@ int main(int argc, char **argv)
         while (SDL_PollEvent(&ev)) {
             if (ev.type == SDL_QUIT) quit = 1;
             if (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_ESCAPE) quit = 1;
+            /* With SDL_RenderSetLogicalSize, window resize is handled automatically:
+             * SDL scales the logical 320x368 canvas to fit the new window size,
+             * maintaining aspect ratio with letterboxing if needed. */
+            if (ev.type == SDL_WINDOWEVENT && ev.window.event == SDL_WINDOWEVENT_RESIZED) {
+                /* Resize event acknowledged; SDL renderer handles scaling. */
+            }
         }
         if (quit) break;
 
