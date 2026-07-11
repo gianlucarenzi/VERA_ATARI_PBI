@@ -51,31 +51,58 @@ def build_vbm(src_path, name=None):
     canvas = Image.new("RGB", (CANVAS_W, CANVAS_H), (0, 0, 0))
     canvas.paste(black_src, ((CANVAS_W - new_w) // 2, (CANVAS_H - new_h) // 2))
 
-    # Pre-reduce to VERA's 12-bit (4 bits per channel) colour space before
-    # quantising.  Without this step, Pillow's adaptive quantiser may pick
-    # palette entries whose 8-bit channel values are not exact multiples of 17
-    # (e.g. B=15), which then truncate to a completely different 4-bit value
-    # (15 >> 4 = 0, i.e. blue disappears, so white becomes yellow).  Mapping
-    # everything to the 4096 representable VERA colours first ensures the final
-    # 4-bit extraction is lossless and the quantisation error is minimised.
+    # Build a VERA-native palette then apply it to the original canvas with
+    # Floyd-Steinberg dithering.  The two-step approach gives better quality
+    # than quantising the pre-reduced image directly:
     #
-    # LUT: round each 8-bit value to the nearest representable 4-bit step.
-    # (v + 8) >> 4 gives the nearest 4-bit index (0-15), capped at 15, then
-    # x17 restores an 8-bit value that round-trips perfectly through >> 4.
+    # Step A — build palette in VERA's 12-bit colour space:
+    #   • Map every pixel to the nearest representable VERA colour using a
+    #     round-to-nearest LUT: (v+8)>>4 gives the 4-bit index, ×17 restores
+    #     the exact 8-bit equivalent.  This prevents truncation artefacts
+    #     (e.g. B=15 → b4=0 → yellow instead of b4=1 → near-white).
+    #   • Ask Pillow's median-cut to select the 255 most useful colours from
+    #     that restricted palette, then always reserve one slot for pure white
+    #     (255,255,255) so it is never lost to warm-yellow variants.
+    #
+    # Step B — apply palette to the ORIGINAL (full 8-bit) canvas with dithering:
+    #   Using the un-reduced image for dithering lets Floyd-Steinberg measure
+    #   the true quantisation error and spread it accurately over neighbours,
+    #   giving visually smoother colour transitions than dithering after the
+    #   4-bit reduction.
     vera_lut = [min(15, (v + 8) >> 4) * 17 for v in range(256)]
-    canvas = canvas.point(vera_lut * 3)  # apply identically to R, G, B
+    canvas_vera = canvas.point(vera_lut * 3)
 
-    indexed = canvas.convert("P", palette=Image.ADAPTIVE, colors=256)
+    # Find the 255 most useful VERA colours via Pillow's median-cut
+    temp = canvas_vera.convert("P", palette=Image.ADAPTIVE, colors=255)
+    pal_flat = list(temp.getpalette()[:255 * 3])
+
+    # Ensure pure white (the only VERA colour with all channels = 255) is present
+    has_white = any(
+        pal_flat[i * 3] == 255 and pal_flat[i * 3 + 1] == 255 and pal_flat[i * 3 + 2] == 255
+        for i in range(len(pal_flat) // 3)
+    )
+    if not has_white:
+        pal_flat = [255, 255, 255] + pal_flat[:254 * 3]   # prepend white, drop last
+
+    # Pad palette to 256 entries (with black)
+    pal_flat += [0, 0, 0] * (256 - len(pal_flat) // 3)
+
+    # Quantise the original full-quality canvas to this VERA palette,
+    # with Floyd-Steinberg dithering for smoother colour transitions
+    palette_img = Image.new("P", (1, 1))
+    palette_img.putpalette(pal_flat)
+    indexed = canvas.quantize(palette=palette_img, dither=1)
+
     pixels = indexed.tobytes()
     assert len(pixels) == CANVAS_W * CANVAS_H, "unexpected pixel byte count"
 
-    rgb_palette = indexed.getpalette() or []
-    rgb_palette += [0, 0, 0] * (256 - len(rgb_palette) // 3)   # pad to 256 entries
+    # The palette is exactly pal_flat (all values are VERA multiples of 17)
+    rgb_palette = pal_flat
 
     palette_bytes = bytearray()
     for i in range(256):
-        r, g, b = rgb_palette[i * 3:i * 3 + 3]
-        # All values are exact multiples of 17 after the LUT, so >> 4 is lossless.
+        r, g, b = rgb_palette[i * 3], rgb_palette[i * 3 + 1], rgb_palette[i * 3 + 2]
+        # Multiples of 17: >>4 is lossless (e.g. 255>>4=15, 17>>4=1, 0>>4=0)
         r4, g4, b4 = r >> 4, g >> 4, b >> 4
         palette_bytes.append((g4 << 4) | b4)    # byte0 = GGGGBBBB
         palette_bytes.append(r4)                # byte1 = 0000RRRR
