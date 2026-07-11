@@ -159,22 +159,23 @@ static SDL_Surface *vbm_load_surface(const char *path)
         return NULL;
     }
 
-    /* Create surface: 8bpp indexed */
-    SDL_Surface *surf = SDL_CreateRGBSurface(0, w, h, 8, 0, 0, 0, 0);
-    if (!surf) {
+    /* Create palette */
+    SDL_Palette *pal = SDL_AllocPalette(256);
+    if (!pal) {
         free(data);
         return NULL;
     }
 
-    /* Set palette: convert from VERA format (GGGGBBBB/0000RRRR) to SDL RGB */
+    /* Convert from VERA palette format to SDL RGB.
+     * VERA stores each entry as 2 bytes: byte0=GGGGBBBB, byte1=0000RRRR */
     SDL_Color palette[256];
     for (int i = 0; i < 256; i++) {
-        uint8_t byte0 = data[palette_offset + i * 2];
-        uint8_t byte1 = data[palette_offset + i * 2 + 1];
+        uint8_t byte0 = data[palette_offset + i * 2];      /* GGGGBBBB */
+        uint8_t byte1 = data[palette_offset + i * 2 + 1];  /* 0000RRRR */
 
+        uint8_t r4 = byte1 & 0xF;
         uint8_t g4 = (byte0 >> 4) & 0xF;
         uint8_t b4 = byte0 & 0xF;
-        uint8_t r4 = byte1 & 0xF;
 
         /* Convert from 4-bit to 8-bit (multiply by 17: 0xF * 17 = 0xFF) */
         palette[i].r = r4 * 17;
@@ -182,10 +183,38 @@ static SDL_Surface *vbm_load_surface(const char *path)
         palette[i].b = b4 * 17;
         palette[i].a = 255;
     }
-    SDL_SetPaletteColors(surf->format->palette, palette, 0, 256);
+    SDL_SetPaletteColors(pal, palette, 0, 256);
+
+    /* Create 8bpp indexed surface and set palette */
+    SDL_PixelFormat *fmt = SDL_AllocFormat(SDL_PIXELFORMAT_INDEX8);
+    if (!fmt) {
+        SDL_FreePalette(pal);
+        free(data);
+        return NULL;
+    }
+    SDL_SetPixelFormatPalette(fmt, pal);
+
+    SDL_Surface *surf = SDL_CreateRGBSurfaceWithFormat(0, w, h, 8, SDL_PIXELFORMAT_INDEX8);
+    if (!surf) {
+        SDL_FreeFormat(fmt);
+        SDL_FreePalette(pal);
+        free(data);
+        return NULL;
+    }
+
+    /* Set the palette on the surface */
+    if (SDL_SetSurfacePalette(surf, pal) < 0) {
+        SDL_FreeSurface(surf);
+        SDL_FreePalette(pal);
+        SDL_FreeFormat(fmt);
+        free(data);
+        return NULL;
+    }
 
     /* Copy pixel data */
     memcpy(surf->pixels, data + pixel_offset, w * h);
+
+    SDL_FreeFormat(fmt);
 
     free(data);
     return surf;

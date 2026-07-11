@@ -51,6 +51,20 @@ def build_vbm(src_path, name=None):
     canvas = Image.new("RGB", (CANVAS_W, CANVAS_H), (0, 0, 0))
     canvas.paste(black_src, ((CANVAS_W - new_w) // 2, (CANVAS_H - new_h) // 2))
 
+    # Pre-reduce to VERA's 12-bit (4 bits per channel) colour space before
+    # quantising.  Without this step, Pillow's adaptive quantiser may pick
+    # palette entries whose 8-bit channel values are not exact multiples of 17
+    # (e.g. B=15), which then truncate to a completely different 4-bit value
+    # (15 >> 4 = 0, i.e. blue disappears, so white becomes yellow).  Mapping
+    # everything to the 4096 representable VERA colours first ensures the final
+    # 4-bit extraction is lossless and the quantisation error is minimised.
+    #
+    # LUT: round each 8-bit value to the nearest representable 4-bit step.
+    # (v + 8) >> 4 gives the nearest 4-bit index (0-15), capped at 15, then
+    # x17 restores an 8-bit value that round-trips perfectly through >> 4.
+    vera_lut = [min(15, (v + 8) >> 4) * 17 for v in range(256)]
+    canvas = canvas.point(vera_lut * 3)  # apply identically to R, G, B
+
     indexed = canvas.convert("P", palette=Image.ADAPTIVE, colors=256)
     pixels = indexed.tobytes()
     assert len(pixels) == CANVAS_W * CANVAS_H, "unexpected pixel byte count"
@@ -61,6 +75,7 @@ def build_vbm(src_path, name=None):
     palette_bytes = bytearray()
     for i in range(256):
         r, g, b = rgb_palette[i * 3:i * 3 + 3]
+        # All values are exact multiples of 17 after the LUT, so >> 4 is lossless.
         r4, g4, b4 = r >> 4, g >> 4, b >> 4
         palette_bytes.append((g4 << 4) | b4)    # byte0 = GGGGBBBB
         palette_bytes.append(r4)                # byte1 = 0000RRRR
