@@ -62,8 +62,8 @@ def build_vbm(src_path, name=None):
     for i in range(256):
         r, g, b = rgb_palette[i * 3:i * 3 + 3]
         r4, g4, b4 = r >> 4, g >> 4, b >> 4
-        palette_bytes.append((g4 << 4) | b4)    # byte0 = GGGGBBBB
-        palette_bytes.append(r4)                # byte1 = 0000RRRR
+        palette_bytes.append(r4)                # byte0 = 0000RRRR
+        palette_bytes.append((g4 << 4) | b4)    # byte1 = GGGGBBBB
 
     header = struct.pack("<4sHHBBxx", b"VBM2", CANVAS_W, CANVAS_H, 8, len(name_bytes))
     return header + name_bytes + bytes(palette_bytes) + pixels
