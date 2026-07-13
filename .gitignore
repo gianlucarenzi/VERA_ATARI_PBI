@@ -80,3 +80,4 @@ vera_pbi.atr
 /vera-tests/songs/bubblebobble.vtms
 __pycache__/
 *.pyc
+/vera_pbi_handler.o
