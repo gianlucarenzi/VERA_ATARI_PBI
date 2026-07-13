@@ -142,6 +142,12 @@ echo
 echo "DEMO.VTM is $VTM_BYTES bytes (<= 22K) — building the Atari disk too."
 
 echo "== converting artwork for VERA (img2vbm.py) =="
+if python3 -c "import wand.image" >/dev/null 2>&1; then
+    echo "   using ImageMagick (Wand) for color quantization/dithering"
+else
+    echo "   Wand not installed — using img2vbm.py's internal Pillow-only conversion"
+    echo "   For optimal results, install it: sudo apt install python3-wand"
+fi
 DEMO_VBM="$OUT_DIR/DEMO.VBM"
 if [ -n "$IMAGE_TITLE" ]; then
     python3 "$TOOLS/img2vbm.py" "$IMAGE" "$DEMO_VBM" "$IMAGE_TITLE"
