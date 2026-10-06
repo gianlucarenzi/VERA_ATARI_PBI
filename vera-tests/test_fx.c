@@ -96,19 +96,28 @@ static unsigned int end_timer(void)
 static unsigned char g_pass = 0;
 static unsigned char g_fail = 0;
 
+static unsigned char g_lines = 0;
+static const char *g_section = "";
+
+/* Only FAIL lines are printed (OK checks are just counted), and the output
+ * pauses every 20 lines so nothing scrolls away unread. */
 static void check_b(const char *name, unsigned char got, unsigned char expected)
 {
     if (got == expected)
     {
-        printf("OK   %-24s $%02X\n", name, (unsigned int)got);
         g_pass++;
+        return;
     }
-    else
+    if (g_lines >= 20)
     {
-        printf("FAIL %-24s got $%02X exp $%02X\n",
-               name, (unsigned int)got, (unsigned int)expected);
-        g_fail++;
+        printf("-- press a key --\n");
+        cgetc();
+        g_lines = 0;
     }
+    printf("FAIL %s %s\n     got $%02X exp $%02X\n", g_section, name,
+           (unsigned int)got, (unsigned int)expected);
+    g_lines += 2;
+    g_fail++;
 }
 
 /* ------------------------------------------------------------------ */
@@ -146,7 +155,7 @@ static void test_fx_ctrl(void)
 {
     unsigned char v;
 
-    printf("\n[2] FX_CTRL roundtrip\n");
+    g_section = "[2]";
 
     VERA_CTRL  = DCSEL_2;
     /* transparency=1, 4bit=1, mode=NORMAL → 0x84 */
@@ -181,7 +190,7 @@ static void check_wo(unsigned char dcsel, const char *tag,
 
 static void test_write_only(void)
 {
-    printf("\n[3] FX regs write-only (read = V,47,0,0)\n");
+    g_section = "[3]";
 
     /* DCSEL=2: only $09 (FX_CTRL) is readable */
     VERA_CTRL  = DCSEL_2;
@@ -229,7 +238,7 @@ static void test_multiplier(void)
 {
     unsigned char r0, r1, r2, r3;
 
-    printf("\n[9] Multiplier result to VRAM\n");
+    g_section = "[9]";
 
     CRITIC = 1;
 
@@ -286,7 +295,7 @@ static void test_transparency(void)
 {
     unsigned char v;
 
-    printf("\n[10] Transparency (8-bit mode)\n");
+    g_section = "[10]";
 
     CRITIC = 1;
 
@@ -325,7 +334,7 @@ static void test_cache_manual(void)
 {
     unsigned char r0, r1, r2, r3;
 
-    printf("\n[11] Manual Cache Load + Write\n");
+    g_section = "[11]";
 
     /* 1. Load cache manually via DCSEL_6 */
     VERA_CTRL  = DCSEL_6;
@@ -368,7 +377,7 @@ static void test_cache_copy(void)
     unsigned char r0, r1, r2, r3;
     volatile unsigned char dummy;
 
-    printf("\n[12] Cache Fill + Write (4:1 Pattern)\n");
+    g_section = "[12]";
 
     /* Prepare source data */
     vram_write(TEST_VRAM_SRC + 0, 0xA1);
