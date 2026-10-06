@@ -22,12 +22,19 @@ extern volatile unsigned int  rmt_deferred;   /* ticks postponed (VBI with I=1),
 extern volatile unsigned int  rmt_dropped;    /* ticks lost: song tempo error */
 extern volatile unsigned char rmt_audc[4];    /* AUDC values computed by the player */
 
-/* RMT_VERA build: output on the VERA PSG as well (psgrmt.s) */
-void psg_init(void);                           /* PAL/NTSC constants, voices 0-3 silent */
-void psg_silence(void);                        /* voices 0-3 at volume 0 */
-extern volatile unsigned char psg_enable;      /* 1 = voices 0-3 follow the player */
-extern volatile unsigned char psg_stereo;      /* 1 = ch 1/3 left, ch 2/4 right */
-extern volatile unsigned char psg_volume[4];   /* VERA level of the voices (0..63) */
-extern volatile unsigned char rmt_pokey_mute;  /* 1 = POKEY kept silent */
+/* RMT_VERA build: output on the VERA PSG as well (psgrmt.s).
+ * RMT_TRACKS = 4 (RMT4, mono) or 8 (RMT8, stereo for two POKEYs: channels
+ * 1-4 on the real POKEY, 5-8 only on VERA). */
+#ifndef RMT_TRACKS
+#define RMT_TRACKS 4
+#endif
+extern const unsigned char rmt_tracks;                  /* tracks the player was built for */
+void psg_init(void);                                    /* PAL/NTSC constants, voices silent */
+void psg_silence(void);                                 /* PSG voices at volume 0 */
+extern volatile unsigned char psg_enable;               /* 1 = voices follow the player */
+extern volatile unsigned char psg_stereo;               /* 1 = stereo pan */
+extern volatile unsigned char psg_hybrid;               /* 1 = VERA plays only channels 5-8 */
+extern volatile unsigned char psg_volume[RMT_TRACKS];   /* VERA level of the voices (0..63) */
+extern volatile unsigned char rmt_pokey_mute;           /* 1 = POKEY kept silent */
 
 #endif

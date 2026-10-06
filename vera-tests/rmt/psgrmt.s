@@ -17,9 +17,15 @@
 ;   volume     POKEY volume is linear, VERA volume is logarithmic (0.5 dB per
 ;              step): vol_log maps 0..15 to the VERA level of the same
 ;              amplitude
-;   channels   one VERA voice per POKEY channel (the low channel of a 16 bit
-;              pair is silent, as on POKEY); pan L+R, or ch 1/3 left and
-;              ch 2/4 right when psg_stereo is set
+;   channels   one VERA voice per channel (the low channel of a 16 bit pair
+;              is silent, as on POKEY). RMT4: voices 0-3; RMT8 (RMT_TRACKS =
+;              8, stereo modules for two POKEYs): voices 0-7, channels 1-4
+;              from the left POKEY state, 5-8 from the right one (never
+;              written to hardware, see rmtplayr.s), each with its own
+;              AUDCTL. Pan L+R; with psg_stereo, RMT4 puts ch 1/3 left and
+;              2/4 right, RMT8 puts ch 1-4 left and 5-8 right. psg_hybrid
+;              silences the voices of channels 1-4 (POKEY plays them, VERA
+;              only 5-8)
 ;
 ; Not reproduced: volume only mode (AUDC bit 4, sample playback) and the
 ; high pass filters (AUDCTL bits 2, 1). The noise is VERA's own LFSR at the
@@ -38,9 +44,18 @@
 
         .export psg_update, psg_silence
         .export _psg_init, _psg_silence := psg_silence
-        .export _psg_enable, _psg_stereo, _psg_volume
+        .export _psg_enable, _psg_stereo, _psg_hybrid, _psg_volume
         .import trackn_audf, trackn_audc, v_audctl
         .import psgtab_lo, psgtab_hi, psg_ktab
+
+.ifdef RMT_TRACKS
+NCH             = RMT_TRACKS            ; channels = PSG voices driven
+.else
+NCH             = 4
+.endif
+.if NCH > 4
+        .import v_audctl2
+.endif
 
 PALNTS          = $0062                 ; XL OS: 0 = NTSC
 PSG_ADDR        = VERA_PSG_BASE         ; $1F9C0, voice 0
@@ -52,9 +67,10 @@ PAN_LR          = $C0                   ; PSG reg 2: bit 7 right, bit 6 left
 
         .segment "BSS"
 
-_psg_enable:    .res 1          ; 1 = voices 0-3 follow the player
-_psg_stereo:    .res 1          ; 1 = ch 1/3 left, ch 2/4 right
-_psg_volume:    .res 4          ; VERA level of the 4 voices (0..63)
+_psg_enable:    .res 1          ; 1 = voices 0..NCH-1 follow the player
+_psg_stereo:    .res 1          ; 1 = stereo pan (see header)
+_psg_hybrid:    .res 1          ; 1 = channels 1-4 silent on VERA
+_psg_volume:    .res NCH        ; VERA level of the voices (0..63)
 
 psg_on:         .res 1          ; voices currently driven
 wbusy:          .res 1          ; a VERA write is in progress
@@ -62,6 +78,9 @@ tabofs:         .res 1          ; std * 5: page of the table
 kofs:           .res 1          ; std * 21: offset in psg_ktab
 
 ch:             .res 1
+cx:             .res 1          ; channel within its POKEY (0..3)
+abase:          .res 1          ; 0 / 4: index of the POKEY's AUDF1
+actl:           .res 1          ; AUDCTL of the channel's POKEY
 dist:           .res 1
 fast:           .res 1
 base:           .res 1
@@ -69,28 +88,28 @@ tmp:            .res 1
 wlo:            .res 1
 whi:            .res 1
 
-c_vol:          .res 4          ; POKEY volume 0..15
-c_wave:         .res 4
-c_pw:           .res 4
-c_simple:       .res 4          ; 1 = 64 kHz 8 bit: word from psgtab
-c_sk:           .res 4          ; table kind 0..4
-c_k:            .res 4          ; index in psg_ktab
-c_n0:           .res 4          ; divider in machine cycles (24 bit)
-c_n1:           .res 4
-c_n2:           .res 4
+c_vol:          .res NCH          ; POKEY volume 0..15
+c_wave:         .res NCH
+c_pw:           .res NCH
+c_simple:       .res NCH          ; 1 = 64 kHz 8 bit: word from psgtab
+c_sk:           .res NCH          ; table kind 0..4
+c_k:            .res NCH          ; index in psg_ktab
+c_n0:           .res NCH          ; divider in machine cycles (24 bit)
+c_n1:           .res NCH
+c_n2:           .res NCH
 
-v_key0:         .res 4          ; divider and constant of the cached word
-v_key1:         .res 4
-v_key2:         .res 4
-v_keyk:         .res 4
-v_wlo:          .res 4
-v_whi:          .res 4
+v_key0:         .res NCH          ; divider and constant of the cached word
+v_key1:         .res NCH
+v_key2:         .res NCH
+v_keyk:         .res NCH
+v_wlo:          .res NCH
+v_whi:          .res NCH
 
 dvd:            .res 3          ; dividend / quotient
 dsr:            .res 3          ; divisor
 rem:            .res 3
 
-buf:            .res 16         ; 4 voices x (freq lo, freq hi, pan|vol, wave|pw)
+buf:            .res 4*NCH      ; per voice: freq lo, freq hi, pan|vol, wave|pw
 
 save_ctrl:      .res 1
 save_fx:        .res 1
@@ -120,8 +139,12 @@ simple_mask:
 ; VERA level with the same amplitude as POKEY volume 0..15 (psg.v log table)
 vol_log:
         .byte 0, 17, 28, 35, 40, 44, 47, 50, 52, 54, 56, 58, 59, 61, 62, 63
-pan_stereo:
-        .byte $40, $80, $40, $80
+pan_stereo:                             ; with psg_stereo
+.if NCH > 4
+        .byte $40, $40, $40, $40, $80, $80, $80, $80    ; left / right POKEY
+.else
+        .byte $40, $80, $40, $80                        ; 1/3 left, 2/4 right
+.endif
 
         .segment "CODE"
 
@@ -140,7 +163,7 @@ _psg_init:
         lda #21
         sta kofs
 @k:     lda #$FF
-        ldx #3
+        ldx #NCH-1
 @c:     sta v_keyk,x                    ; no cached word
         dex
         bpl @c
@@ -167,7 +190,7 @@ psg_update:
         jsr voice
         ldx ch
         inx
-        cpx #4
+        cpx #NCH
         bne @c
         jmp vera_write
 @rts:   rts
@@ -178,11 +201,11 @@ psg_update:
 psg_silence:
         lda #0
         sta psg_on
-        ldx #15
+        ldx #4*NCH-1
 @b:     sta buf,x
         dex
         bpl @b
-        ldx #3
+        ldx #NCH-1
 @v:     sta _psg_volume,x
         dex
         bpl @v
@@ -218,7 +241,7 @@ vera_write:
 @w:     lda buf,x
         sta VERA_DATA0
         inx
-        cpx #16
+        cpx #4*NCH
         bne @w
         lda save_l                      ; restoring the address also
         sta VERA_ADDR_L                 ; refreshes the DATA0 prefetch
@@ -239,6 +262,20 @@ vera_write:
 ; channel - X = POKEY channel: volume, waveform, divider, constant
 ; ----------------------------------------------------------------------------
 channel:
+        txa
+        and #$03
+        sta cx
+        txa
+        and #$04
+        sta abase
+        lda v_audctl
+.if NCH > 4
+        cpx #4
+        bcc @lp
+        lda v_audctl2                   ; right POKEY
+@lp:
+.endif
+        sta actl
         lda trackn_audc,x
         and #$0F
         sta c_vol,x
@@ -259,11 +296,13 @@ channel:
         sta c_wave,x
         lda dist_pw,y
         sta c_pw,x
-        lda v_audctl
-        and simple_mask,x
+        ldy cx
+        lda actl
+        and simple_mask,y
         bne @full
         lda #1                          ; 64 kHz 8 bit: word from psgtab
         sta c_simple,x
+        ldy dist
         lda dist_sk,y
         sta c_sk,x
         rts
@@ -275,51 +314,52 @@ channel:
         sta fast
         lda trackn_audf,x
         sta dvd
-        cpx #0
+        ldy abase                       ; Y = AUDF1 of this POKEY
+        lda cx
         bne @n1
-        lda v_audctl                    ; channel 1: low byte of 1+2?
+        lda actl                        ; channel 1: low byte of 1+2?
         and #$10
         beq @f1
         lda #0
         sta c_vol,x
         rts
-@f1:    lda v_audctl
+@f1:    lda actl
         and #$40
         sta fast
         jmp @div
-@n1:    cpx #1
+@n1:    cmp #1
         bne @n2
-        lda v_audctl                    ; channel 2: 16 bit 1+2
+        lda actl                        ; channel 2: 16 bit 1+2
         and #$10
         beq @div
-        lda trackn_audf+0
+        lda trackn_audf+0,y
         sta dvd
-        lda trackn_audf+1
+        lda trackn_audf+1,y
         sta dvd+1
-        lda v_audctl
+        lda actl
         and #$40
         sta fast
         jmp @div16
-@n2:    cpx #2
+@n2:    cmp #2
         bne @n3
-        lda v_audctl                    ; channel 3: low byte of 3+4?
+        lda actl                        ; channel 3: low byte of 3+4?
         and #$08
         beq @f3
         lda #0
         sta c_vol,x
         rts
-@f3:    lda v_audctl
+@f3:    lda actl
         and #$20
         sta fast
         jmp @div
-@n3:    lda v_audctl                    ; channel 4: 16 bit 3+4
+@n3:    lda actl                        ; channel 4: 16 bit 3+4
         and #$08
         beq @div
-        lda trackn_audf+2
+        lda trackn_audf+2,y
         sta dvd
-        lda trackn_audf+3
+        lda trackn_audf+3,y
         sta dvd+1
-        lda v_audctl
+        lda actl
         and #$20
         sta fast
 @div16: lda fast
@@ -344,7 +384,7 @@ channel:
         inc dvd+1
         bne @nc
         inc dvd+2
-@nc:    lda v_audctl
+@nc:    lda actl
         and #$01
         beq @b64
         lda #114
@@ -427,7 +467,12 @@ channel:
 ; voice - X = channel: frequency word, then the 4 PSG bytes in buf
 ; ----------------------------------------------------------------------------
 voice:
-        lda c_vol,x
+        lda _psg_hybrid                 ; hybrid: POKEY plays channels 1-4
+        beq @nh
+        cpx #4
+        bcs @nh
+        jmp @silent
+@nh:    lda c_vol,x
         bne @on
         jmp @silent
 @on:    lda c_simple,x

@@ -9,7 +9,11 @@
 ;*  - relocatable: zero page vars in ZEROPAGE, track vars in BSS, tables in
 ;*    RODATA (frqtab is page aligned through .align), code in CODE.
 ;*    The original "PLAYER must be at $xx00" constraint is gone.
-;*  - mono only (STEREOMODE 0).
+;*  - mono (STEREOMODE 0); with -D RMT_TRACKS=8 (RMT_VERA builds) the
+;*    8-track stereo mode of the original (STEREOMODE 1: L1 L2 L3 L4 R1 R2
+;*    R3 R4). The right POKEY is never written ($D210 mirrors $D200 on a
+;*    stock Atari): channels 5-8 only exist in trackn_audf/audc+4 and
+;*    v_audctl2, for psgrmt.s.
 ;*  - SetPokey honours rmt_ioactive: while a SIO transfer is running POKEY
 ;*    channels 3+4 are the serial baud rate generator (AUDCTL=$28, 16 bit
 ;*    joined, 1.79MHz clock) so the player must NOT write AUDF3/AUDC3/
@@ -32,14 +36,27 @@
         .export rmt_ioactive
         .export _rmt_audc
 .ifdef RMT_VERA
-        .export trackn_audf, trackn_audc, v_audctl
-        .export _rmt_pokey_mute
+        .export trackn_audf, trackn_audc, v_audctl, v_audctl2
+        .export _rmt_pokey_mute, _rmt_tracks
 .endif
+;* the module (tools/rmt2ca65.py) states how many tracks it was made for
+        .importzp rmt_song_tracks
+        .assert rmt_song_tracks = TRACKS, error, "RMT module and player track count differ (RMT_TRACKS)"
 
 ;* current AUDC values computed by the player (C: rmt_audc[4], VU meter)
 _rmt_audc = trackn_audc
 
+.ifdef RMT_TRACKS
+TRACKS          = RMT_TRACKS
+.else
 TRACKS          = 4
+.endif
+.if TRACKS <> 4 && TRACKS <> 8
+.error "RMT_TRACKS must be 4 (RMT4, mono) or 8 (RMT8, stereo)"
+.endif
+.if TRACKS > 4 && .not .defined(RMT_VERA)
+.error "8 tracks need RMT_VERA: there is no second POKEY to write"
+.endif
 INSTRPAR        = 12
 
 .ifdef RMT_C64
@@ -154,7 +171,7 @@ trackn_audctl:          .res TRACKS
 v_aspeed:               .res 1
 track_endvariables:
 
-        .assert track_endvariables - track_variables < 256, error, "RMT track variables too big"
+        .assert track_endvariables - track_variables < 512, error, "RMT track variables too big (rmt_init clears at most 512 bytes)"
 
 ;* ---------------------------------------------------------------------------
 ;* Tables (RMTTAB segment is page aligned by src/pokeyatest.cfg)
@@ -244,6 +261,10 @@ rmt_ioactive:   .byte 0
 .ifdef RMT_VERA
 ;* != 0: POKEY kept silent (VERA PSG only output)
 _rmt_pokey_mute: .byte 0
+;* AUDCTL of the right POKEY (8 tracks); 0 in mono builds
+v_audctl2:      .byte 0
+;* tracks the player was built for (4 or 8)
+_rmt_tracks:    .byte TRACKS
 .endif
 
 ;*
@@ -266,11 +287,20 @@ rmt_init:
 .if FEAT_NOSTARTINGSONGLINE = 0
         pha
 .endif
+.if track_endvariables-track_variables > 255
+        ldy #0                  ;* 8 tracks: more than 255 bytes to clear
+        tya
+ri0:    sta track_variables,y
+        sta track_endvariables-$100,y
+        iny
+        bne ri0
+.else
         ldy #track_endvariables-track_variables
         lda #0
 ri0:    sta track_variables-1,y
         dey
         bne ri0
+.endif
         ldy #4
         lda (ns),y
         sta v_maxtracklen
@@ -297,6 +327,21 @@ ri1:    lda (ns),y
 .if FEAT_NOSTARTINGSONGLINE = 0
         pla
         pha
+.if TRACKS > 4
+        asl a                   ;* song line = 8 bytes
+        asl a
+        asl a
+        clc
+        adc p_song
+        sta p_song
+        pla
+        php
+        and #$e0
+        asl a
+        rol a
+        rol a
+        rol a
+.else
         asl a
         asl a
         clc
@@ -308,6 +353,7 @@ ri1:    lda (ns),y
         asl a
         rol a
         rol a
+.endif
         plp
         adc p_song+1
         sta p_song+1
@@ -667,6 +713,15 @@ pp1b:
         lda trackn_instrlop,x
 pp2:    sta trackn_instridx,x
         lda reg1
+.if TRACKS > 4
+        cpx #4                  ;* right tracks: volume in the high nibble
+        bcc pp2s
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+pp2s:
+.endif
         and #$0f
         ora trackn_volume,x
         tay
@@ -1131,6 +1186,18 @@ qq4a:
 .endif
 qq5:
         stx v_audctl
+.if TRACKS > 4
+.if FEAT_AUDCTLMANUALSET
+        lda trackn_audctl+4
+        ora trackn_audctl+5
+        ora trackn_audctl+6
+        ora trackn_audctl+7
+        tax
+.else
+        ldx #0
+.endif
+        stx v_audctl2
+.endif
 rmt_p5:
 .if FEAT_INSTRSPEED = 0 || FEAT_INSTRSPEED > 1
         lda #$ff

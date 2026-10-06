@@ -280,6 +280,9 @@ RMT_DIR      = vera-tests/rmt
 RMT_GEN      = $(RMT_DIR)/gen
 RMT_SONG    ?= $(RMT_DIR)/music/gemx.rmt
 RMT_SONGNAME = $(basename $(notdir $(RMT_SONG)))
+# 4 for RMT4 (mono) modules, 8 for RMT8 (stereo): player, translator and C
+# side are built for the module's track count (checked again at link time)
+RMT_TRACKS  := $(shell $(PYTHON) -c "d=open('$(RMT_SONG)','rb').read(10); print(8 if d[6:10]==b'RMT8' else 4)")
 TEST_RMT_EXE = TESTRMT.COM
 RMT_ASM      = $(RMT_DIR)/rmtplayr.s $(RMT_DIR)/rmtvbi.s $(RMT_DIR)/psgrmt.s
 
@@ -287,13 +290,23 @@ $(RMT_GEN)/psgtab.s: $(RMT_DIR)/tools/mkpsgtab.py
 	@mkdir -p $(RMT_GEN)
 	$(PYTHON) $< $@
 
-$(RMT_GEN)/song.s: $(RMT_SONG) $(RMT_DIR)/tools/rmt2ca65.py
+# one stamp per song name: switching RMT_SONG regenerates song.s even when
+# the new .rmt file is older than the last song.s
+RMT_SONG_STAMP = $(RMT_GEN)/song.$(RMT_SONGNAME).stamp
+
+$(RMT_SONG_STAMP):
+	@mkdir -p $(RMT_GEN)
+	@rm -f $(RMT_GEN)/song.*.stamp
+	@touch $@
+
+$(RMT_GEN)/song.s: $(RMT_SONG) $(RMT_DIR)/tools/rmt2ca65.py $(RMT_SONG_STAMP)
 	@mkdir -p $(RMT_GEN)
 	$(PYTHON) $(RMT_DIR)/tools/rmt2ca65.py $(RMT_SONG) $@
 
 $(TEST_RMT_EXE): $(RMT_DIR)/test_rmt.c $(RMT_DIR)/rmt.h $(RMT_ASM) $(RMT_DIR)/rmt_feat.inc $(RMT_DIR)/testrmt.cfg $(RMT_GEN)/psgtab.s $(RMT_GEN)/song.s vera_common.inc vera-tests/vera_detect.h
 	cl65 -t atari -C $(RMT_DIR)/testrmt.cfg -I vera-tests -I $(RMT_DIR) \
 	     --asm-include-dir . --asm-include-dir $(RMT_DIR) --asm-define RMT_VERA \
+	     --asm-define RMT_TRACKS=$(RMT_TRACKS) -DRMT_TRACKS=$(RMT_TRACKS) \
 	     -DRMT_SONG_NAME=\"$(RMT_SONGNAME)\" \
 	     -o $@ $(RMT_DIR)/test_rmt.c $(RMT_ASM) $(RMT_GEN)/psgtab.s $(RMT_GEN)/song.s
 
