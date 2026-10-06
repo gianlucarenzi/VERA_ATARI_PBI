@@ -16,8 +16,12 @@
 ;*    v_audctl2, for psgrmt.s.
 ;*  - SetPokey honours rmt_ioactive: while a SIO transfer is running POKEY
 ;*    channels 3+4 are the serial baud rate generator (AUDCTL=$28, 16 bit
-;*    joined, 1.79MHz clock) so the player must NOT write AUDF3/AUDC3/
-;*    AUDF4/AUDC4/AUDCTL. Only channels 1 and 2 keep playing.
+;*    joined, 1.79MHz clock) so the player must NOT write AUDF3/AUDF4/
+;*    AUDCTL. Only channels 1 and 2 keep playing; AUDC3/AUDC4 are kept at
+;*    volume 0 (the volume does not disturb the timers): no music note left
+;*    hanging nor SIO noise. On the Atari CRITIC <> 0 counts as a transfer
+;*    too: the OS SIO (and so DOS) sets it, no rmt_io_begin needed. Own SIO
+;*    drivers that leave CRITIC at 0 call rmt_io_begin/rmt_io_end.
 ;*  - ca65 -D RMT_C64: Commodore 64 build (../rmt_cbm64). There is no POKEY
 ;*    ($D200 is the VIC-II): the POKEY registers are written to pokey_shadow,
 ;*    16 bytes of RAM imported from the C64 code, which turns them into SID
@@ -74,6 +78,7 @@ AUDC3           = POKEY+$05
 AUDF4           = POKEY+$06
 AUDC4           = POKEY+$07
 AUDCTL          = POKEY+$08
+CRITIC          = $42           ;* OS: <> 0 during SIO
 SKCTL           = POKEY+$0F
 
 FEAT_EFFECTS    = FEAT_EFFECTVIBRATO || FEAT_EFFECTFSHIFT
@@ -257,6 +262,7 @@ vibtabnext:
         .segment "CODE"
 
 ;* != 0 while SIO is active: channels 3/4 and AUDCTL belong to the serial port
+;* (CRITIC <> 0 has the same effect, see SetPokey)
 rmt_ioactive:   .byte 0
 .ifdef RMT_VERA
 ;* != 0: POKEY kept silent (VERA PSG only output)
@@ -1217,12 +1223,7 @@ v_audctl = *-1
         lda #0
         sta AUDC1
         sta AUDC2
-        lda rmt_ioactive        ;* channels 3/4 belong to SIO while active
-        bne sp_io
-        lda #0
-        sta AUDC3
-        sta AUDC4
-        rts
+        beq sp_io               ;* always: channels 3/4 at volume 0 too
 sp_on:
 .endif
         lda trackn_audf+0
@@ -1234,6 +1235,9 @@ sp_on:
         sta AUDF2
         stx AUDC2
         lda rmt_ioactive        ;* SIO running? channels 3/4 + AUDCTL are
+.ifndef RMT_C64
+        ora CRITIC              ;* (OS SIO: CRITIC set)
+.endif
         bne sp_io               ;* the serial clock: do not touch them
         lda trackn_audf+2
         ldx trackn_audc+2
@@ -1244,6 +1248,9 @@ sp_on:
         sta AUDF4
         stx AUDC4
         sty AUDCTL
-sp_io:
+        rts
+sp_io:  lda #0                  ;* SIO owns channels 3/4: keep them silent
+        sta AUDC3
+        sta AUDC4
         rts
 RMTPLAYEREND:

@@ -59,6 +59,7 @@ vera_pbi.atr
 /disk2-veratests-80x30.atr
 /disk2-veratests-80x60.atr
 /disk3-standalone.atr
+/disk4-rmtio.atr
 /vera-tests/test_font.o
 /vera-tests/test_gradient_scroll.o
 /vera-tests/test_maze.o
@@ -76,6 +77,7 @@ vera_pbi.atr
 /TESTPLR.COM
 /TESTIRQ.COM
 /TESTRMT.COM
+/TESTRIO.COM
 /vera-tests/rmt/gen/
 /vera-tests/*.o
 /vera-tests/*.VBM

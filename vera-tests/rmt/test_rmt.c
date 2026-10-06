@@ -1,7 +1,7 @@
 /* test_rmt.c — RMT music on POKEY and/or the VERA PSG.
  *
- * The Atari RMT player (rmtplayr.s, -D RMT_VERA) runs on the immediate VBI
- * (rmtvbi.s) and keeps writing POKEY; psgrmt.s turns the same channels into
+ * The Atari RMT player (rmtplayr.s, -D RMT_VERA) runs on the VBI
+ * (rmtvbi.s: deferred VBI, immediate while SIO has CRITIC set) and keeps writing POKEY; psgrmt.s turns the same channels into
  * VERA PSG voices every frame. RMT4 modules (mono, 4 channels) use voices
  * 0-3; RMT8 modules (stereo, made for two POKEYs) use voices 0-7: channels
  * 1-4 also play on the real POKEY, 5-8 exist only on VERA.
@@ -77,9 +77,11 @@ int main(void)
         cprintf("Output: %s  Stereo: %s", mode_name[mode], psg_stereo ? "on " : "off");
         gotoxy(0, 13);
         cprintf("Frames %5u  player %3u/%3u lines", rmt_frames, rmt_lines, rmt_maxlines);
-        show_levels(15, rmt_tracks > 4 ? "L POKEY" : "  POKEY", 0);
+        gotoxy(0, 14);
+        cprintf("Deferred %5u  dropped %5u", rmt_deferred, rmt_dropped);
+        show_levels(16, rmt_tracks > 4 ? "L POKEY" : "  POKEY", 0);
 #if RMT_TRACKS > 4
-        show_levels(16, "R (n/a)", 4);
+        show_levels(17, "R (n/a)", 4);
 #endif
 
         if (!kbhit())

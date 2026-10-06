@@ -135,7 +135,8 @@ def main():
     sys.stderr.write("rmt2ca65: %s -> %s (RMT%d, %d bytes, %d relocations, instr speed %d)\n"
                      % (src, dst, tracks, len(data), len(words) + len(lobytes) + len(hibytes), data[6]))
     if data[6] != 1:
-        sys.stderr.write("rmt2ca65: WARNING instrument speed %d: the VBI calls the player once per frame\n" % data[6])
+        sys.stderr.write("rmt2ca65: note: instrument speed %d: the VBI calls the player %d times per frame,\n"
+                         "          back to back (the sound changes once per frame)\n" % (data[6], data[6]))
 
 
 if __name__ == "__main__":

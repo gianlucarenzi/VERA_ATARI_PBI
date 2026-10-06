@@ -83,7 +83,7 @@ BUNDLE_VERA = bundle_vera.py
 .PHONY: all clean cleanall install atr labels drivers clean_objs
 
 # The default target builds the PBI ROM and all three driver versions.
-all: $(TARGET) $(SYS) drivers disk1-runcpm.atr disk2-veratests-40x30.atr disk2-veratests-80x30.atr disk2-veratests-80x60.atr disk3-standalone.atr
+all: $(TARGET) $(SYS) drivers disk1-runcpm.atr disk2-veratests-40x30.atr disk2-veratests-80x30.atr disk2-veratests-80x60.atr disk3-standalone.atr disk4-rmtio.atr
 
 # Rule to generate the three resolution-specific drivers.
 # Each build requires a clean objects pass to ensure correct defines are applied.
@@ -220,7 +220,7 @@ TEST_EXES     = TEST4.COM TEST8.COM TEST6.COM
 TESTGS_EXES   = TESTGS4.COM TESTGS8.COM TESTGS6.COM
 TESTMAZE_EXES = TESTMAZ4.COM TESTMAZ8.COM TESTMAZ6.COM
 TESTMTX_EXES  = TESTMTX4.COM TESTMTX8.COM TESTMTX6.COM
-ALL_TEST_EXES = $(TEST_EXES) $(TESTGS_EXES) $(TESTMAZE_EXES) $(TESTMTX_EXES) $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_RMT_EXE) $(TEST_PLAYER_EXE) $(RUNCPM_EXE)
+ALL_TEST_EXES = $(TEST_EXES) $(TESTGS_EXES) $(TESTMAZE_EXES) $(TESTMTX_EXES) $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_RMT_EXE) $(TEST_RIO_EXE) $(TEST_PLAYER_EXE) $(RUNCPM_EXE)
 
 # Template: compile once to an intermediate binary, then bundle three times.
 # $(1) = output base name (7 chars max, no digit suffix)
@@ -284,6 +284,7 @@ RMT_SONGNAME = $(basename $(notdir $(RMT_SONG)))
 # side are built for the module's track count (checked again at link time)
 RMT_TRACKS  := $(shell $(PYTHON) -c "d=open('$(RMT_SONG)','rb').read(10); print(8 if d[6:10]==b'RMT8' else 4)")
 TEST_RMT_EXE = TESTRMT.COM
+TEST_RIO_EXE = TESTRIO.COM
 RMT_ASM      = $(RMT_DIR)/rmtplayr.s $(RMT_DIR)/rmtvbi.s $(RMT_DIR)/psgrmt.s
 
 $(RMT_GEN)/psgtab.s: $(RMT_DIR)/tools/mkpsgtab.py
@@ -309,6 +310,45 @@ $(TEST_RMT_EXE): $(RMT_DIR)/test_rmt.c $(RMT_DIR)/rmt.h $(RMT_ASM) $(RMT_DIR)/rm
 	     --asm-define RMT_TRACKS=$(RMT_TRACKS) -DRMT_TRACKS=$(RMT_TRACKS) \
 	     -DRMT_SONG_NAME=\"$(RMT_SONGNAME)\" \
 	     -o $@ $(RMT_DIR)/test_rmt.c $(RMT_ASM) $(RMT_GEN)/psgtab.s $(RMT_GEN)/song.s
+
+# TESTRIO: same player while loading assets from disk through SIO (from
+# AT2019/ATARI-Driver/PokeyATest). Own bootable disk, MyPicoDos autorun:
+#   make disk4-rmtio.atr [RMT_SONG=...] [RIO_ASSET_SIZES="2048 16384"]
+#   atari800 -nopatchall ... disk4-rmtio.atr   (real POKEY serial timing)
+RIO_SRC         = $(RMT_DIR)/test_rio.c $(RMT_DIR)/dos2fs.c $(RMT_DIR)/sio.s
+RIO_DISK        = .atrbuild/disk4
+RIO_ASSET_SIZES ?= 2048 3500 5120 8000 12288 16384
+RIO_BOOTDOS     ?= MyPicoDos406N
+
+# asset sizes kept in a stamp file: changing them rebuilds header and disk
+$(RMT_GEN)/assets.cfg: FORCE
+	@mkdir -p $(RMT_GEN)
+	@echo '$(RIO_ASSET_SIZES)' | cmp -s - $@ || echo '$(RIO_ASSET_SIZES)' > $@
+
+$(RMT_GEN)/assets.h: $(RMT_GEN)/assets.cfg $(RMT_DIR)/tools/mkassets.py
+	rm -rf $(RIO_DISK)
+	mkdir -p $(RIO_DISK)
+	$(PYTHON) $(RMT_DIR)/tools/mkassets.py --out $(RIO_DISK) --header $@ \
+		--reserved $(TEST_RIO_EXE) --sizes $(RIO_ASSET_SIZES)
+
+$(TEST_RIO_EXE): $(RIO_SRC) $(RMT_DIR)/dos2fs.h $(RMT_DIR)/rmt.h $(RMT_ASM) $(RMT_DIR)/rmt_feat.inc $(RMT_DIR)/testrmt.cfg $(RMT_GEN)/psgtab.s $(RMT_GEN)/song.s $(RMT_GEN)/assets.h vera_common.inc vera-tests/vera_detect.h
+	cl65 -t atari -O -C $(RMT_DIR)/testrmt.cfg -I vera-tests -I $(RMT_DIR) -I $(RMT_GEN) \
+	     --asm-include-dir . --asm-include-dir $(RMT_DIR) --asm-define RMT_VERA \
+	     --asm-define RMT_TRACKS=$(RMT_TRACKS) -DRMT_TRACKS=$(RMT_TRACKS) \
+	     -DRMT_SONG_NAME=\"$(RMT_SONGNAME)\" \
+	     -o $@ $(RIO_SRC) $(RMT_ASM) $(RMT_GEN)/psgtab.s $(RMT_GEN)/song.s
+
+# DOS 2.x sector links are 10 bit: the loader reads up to sector 1023
+disk4-rmtio.atr: $(TEST_RIO_EXE) $(RMT_GEN)/assets.h $(RMT_DIR)/tools/atrcheck.py $(RMT_DIR)/tools/atrorder.py
+	cp $(TEST_RIO_EXE) $(RIO_DISK)/
+	rm -f $@
+	$(DIR2ATR) -a -b $(RIO_BOOTDOS) $@ $(RIO_DISK)
+	@$(PYTHON) $(RMT_DIR)/tools/atrcheck.py $@ 1023 || { rm -f $@; exit 1; }
+	@# MyPicoDos autorun starts the first directory entry: the program
+	@$(PYTHON) $(RMT_DIR)/tools/atrorder.py $@ $(TEST_RIO_EXE) || { rm -f $@; exit 1; }
+	$(call copy_atr_to_fujinet,$@)
+
+.PHONY: FORCE
 
 # ATR image configuration
 REQUIRED_TEST_EXES = TEST4.COM TEST6.COM TESTFX.COM

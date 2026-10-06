@@ -3,7 +3,7 @@
 ;
 ; The Atari RMT player (rmtplayr.s, assembled with -D RMT_VERA) computes the
 ; four POKEY channels (trackn_audf, trackn_audc, v_audctl) and still writes
-; them to POKEY. Once per frame, from the immediate VBI (rmtvbi.s), this code
+; them to POKEY. Once per frame, from the VBI (rmtvbi.s), this code
 ; turns the same channel state into VERA PSG voices 0-3:
 ;
 ;   frequency  from AUDF, AUDCTL (64/15 kHz, 1.79 MHz, 16 bit) and the
