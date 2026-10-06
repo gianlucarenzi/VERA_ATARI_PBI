@@ -37,5 +37,7 @@ Il progetto include una suite di test avanzata per validare l'implementazione ha
 *   **`RUNCPM.COM`:** Un terminale ANSI completo che permette di usare l'Atari con la scheda VERA per accedere a sistemi CP/M remoti via FujiNet.
 *   **Test Funzionali:** Programmi per verificare il caricamento dei font, il rendering di gradienti e la stabilità dello scrolling hardware.
 
+Come compilare l'emulatore e lanciare ogni test, con le opzioni e i risultati attesi: [`Documentation/EMULATOR-TESTS.it.md`](Documentation/EMULATOR-TESTS.it.md) ([PDF](Documentation/EMULATOR-TESTS.it.pdf)); in inglese [`Documentation/EMULATOR-TESTS.en.md`](Documentation/EMULATOR-TESTS.en.md) ([PDF](Documentation/EMULATOR-TESTS.en.pdf)).
+
 ---
 *Questo progetto è un ponte tra l'era d'oro degli 8-bit Atari e le possibilità offerte dall'hardware moderno, espandendo i confini di ciò che queste macchine leggendarie possono visualizzare.*
