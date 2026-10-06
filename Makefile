@@ -375,21 +375,22 @@ define copy_atr_to_fujinet
 	fi
 endef
 
-# Build a bootable DOS 2.0s ED ATR containing RUNCPM.COM and both
-# VERA8030.SYS (80x30) and VERA8060.SYS (80x60) drivers.
-atr: $(TARGET) $(RUNCPM_EXE) $(TEST_FX_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS8030) $(SYS8060) $(SYS4030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
-	rm -rf $(ATRBUILD)
-	mkdir -p $(ATRBUILD)
-	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(RUNCPM_EXE) $(TEST_FX_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS8030) $(SYS8060) $(SYS4030) $(ATRBUILD)/
-	$(DIR2ATR) -E -b Dos20 $(ATR) $(ATRBUILD)
-	@echo "ATR written to $(ATR)"
-	$(call copy_atr_to_fujinet,$(ATR))
-
 # dir2atr sometimes writes a wrong flags byte in the last directory entries of
 # a large Enhanced Density image (the file is there but DOS does not list it)
 # and leaves VTOC1 wrong ("0 FREE SECTORS").  fix_atr_vtoc.py repairs the
 # image and fails if the files do not fit in the 944 sectors VTOC1 can track.
 FIX_ATR = vera-tests/tools/fix_atr_vtoc.py
+
+# Build a bootable DOS 2.0s ED ATR containing RUNCPM.COM and both
+# VERA8030.SYS (80x30) and VERA8060.SYS (80x60) drivers.
+atr: $(TARGET) $(RUNCPM_EXE) $(TEST_FX_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS8030) $(SYS8060) $(SYS4030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(FIX_ATR)
+	rm -rf $(ATRBUILD)
+	mkdir -p $(ATRBUILD)
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(RUNCPM_EXE) $(TEST_FX_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS8030) $(SYS8060) $(SYS4030) $(ATRBUILD)/
+	$(DIR2ATR) -E -b Dos20 $(ATR) $(ATRBUILD)
+	$(PYTHON) $(FIX_ATR) $(ATR)
+	@echo "ATR written to $(ATR)"
+	$(call copy_atr_to_fujinet,$(ATR))
 
 disk1-runcpm.atr: $(RUNCPM_EXE) $(SYS8030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(FIX_ATR)
 	rm -rf .atrbuild/disk1

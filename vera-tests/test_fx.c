@@ -462,7 +462,6 @@ static void run_benchmarks(void)
     unsigned int ticks_fill_inc1;
     unsigned int ticks_copy_inc1;
     unsigned int sp;
-    unsigned char val;
 
     printf("\nBenchmarks (Size: %u KB)\n", BENCH_SIZE / 1024);
     printf("--------------------------\n");
