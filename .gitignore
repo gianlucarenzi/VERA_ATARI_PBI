@@ -75,6 +75,8 @@ vera_pbi.atr
 # VTM player build artifacts (rebuild with `make`/tools/vtm_compile.py)
 /TESTPLR.COM
 /TESTIRQ.COM
+/TESTRMT.COM
+/vera-tests/rmt/gen/
 /vera-tests/*.o
 /vera-tests/*.VBM
 /vera-tests/songs/*.VTM

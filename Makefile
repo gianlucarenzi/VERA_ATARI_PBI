@@ -220,7 +220,7 @@ TEST_EXES     = TEST4.COM TEST8.COM TEST6.COM
 TESTGS_EXES   = TESTGS4.COM TESTGS8.COM TESTGS6.COM
 TESTMAZE_EXES = TESTMAZ4.COM TESTMAZ8.COM TESTMAZ6.COM
 TESTMTX_EXES  = TESTMTX4.COM TESTMTX8.COM TESTMTX6.COM
-ALL_TEST_EXES = $(TEST_EXES) $(TESTGS_EXES) $(TESTMAZE_EXES) $(TESTMTX_EXES) $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_PLAYER_EXE) $(RUNCPM_EXE)
+ALL_TEST_EXES = $(TEST_EXES) $(TESTGS_EXES) $(TESTMAZE_EXES) $(TESTMTX_EXES) $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_RMT_EXE) $(TEST_PLAYER_EXE) $(RUNCPM_EXE)
 
 # Template: compile once to an intermediate binary, then bundle three times.
 # $(1) = output base name (7 chars max, no digit suffix)
@@ -273,6 +273,30 @@ $(VERA_IRQ_OBJ): $(VERA_IRQ_SRC) vera_common.inc
 $(TEST_IRQ_EXE): $(TEST_IRQ_SRC) $(VERA_IRQ_OBJ) vera-tests/vera_irq.h vera-tests/vera_detect.h
 	cl65 -t atari --start-addr 0x5000 -I vera-tests -o $(TEST_IRQ_EXE) $(TEST_IRQ_SRC) $(VERA_IRQ_OBJ)
 
+# --- RMT player on POKEY + VERA PSG (standalone, no VERA.SYS needed) --------
+#   make TESTRMT.COM RMT_SONG=vera-tests/rmt/music/other.rmt
+
+RMT_DIR      = vera-tests/rmt
+RMT_GEN      = $(RMT_DIR)/gen
+RMT_SONG    ?= $(RMT_DIR)/music/gemx.rmt
+RMT_SONGNAME = $(basename $(notdir $(RMT_SONG)))
+TEST_RMT_EXE = TESTRMT.COM
+RMT_ASM      = $(RMT_DIR)/rmtplayr.s $(RMT_DIR)/rmtvbi.s $(RMT_DIR)/psgrmt.s
+
+$(RMT_GEN)/psgtab.s: $(RMT_DIR)/tools/mkpsgtab.py
+	@mkdir -p $(RMT_GEN)
+	$(PYTHON) $< $@
+
+$(RMT_GEN)/song.s: $(RMT_SONG) $(RMT_DIR)/tools/rmt2ca65.py
+	@mkdir -p $(RMT_GEN)
+	$(PYTHON) $(RMT_DIR)/tools/rmt2ca65.py $(RMT_SONG) $@
+
+$(TEST_RMT_EXE): $(RMT_DIR)/test_rmt.c $(RMT_DIR)/rmt.h $(RMT_ASM) $(RMT_DIR)/rmt_feat.inc $(RMT_DIR)/testrmt.cfg $(RMT_GEN)/psgtab.s $(RMT_GEN)/song.s vera_common.inc vera-tests/vera_detect.h
+	cl65 -t atari -C $(RMT_DIR)/testrmt.cfg -I vera-tests -I $(RMT_DIR) \
+	     --asm-include-dir . --asm-include-dir $(RMT_DIR) --asm-define RMT_VERA \
+	     -DRMT_SONG_NAME=\"$(RMT_SONGNAME)\" \
+	     -o $@ $(RMT_DIR)/test_rmt.c $(RMT_ASM) $(RMT_GEN)/psgtab.s $(RMT_GEN)/song.s
+
 # ATR image configuration
 REQUIRED_TEST_EXES = TEST4.COM TEST6.COM TESTFX.COM
 
@@ -322,26 +346,26 @@ disk1-runcpm.atr: $(RUNCPM_EXE) $(SYS8030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP
 	$(PYTHON) $(FIX_ATR) $@
 	$(call copy_atr_to_fujinet,$@)
 
-disk2-veratests-40x30.atr: TEST4.COM TESTGS4.COM TESTMAZ4.COM TESTMTX4.COM $(SYS4030) $(DOS20_DIR)/DOS.SYS $(FIX_ATR) $(DOS20_DIR)/DUP.SYS
+disk2-veratests-40x30.atr: TEST4.COM TESTGS4.COM TESTMAZ4.COM TESTMTX4.COM $(TEST_RMT_EXE) $(SYS4030) $(DOS20_DIR)/DOS.SYS $(FIX_ATR) $(DOS20_DIR)/DUP.SYS
 	rm -rf .atrbuild/disk2_4030
 	mkdir -p .atrbuild/disk2_4030
-	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST4.COM TESTGS4.COM TESTMAZ4.COM TESTMTX4.COM $(SYS4030) .atrbuild/disk2_4030/
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST4.COM TESTGS4.COM TESTMAZ4.COM TESTMTX4.COM $(TEST_RMT_EXE) $(SYS4030) .atrbuild/disk2_4030/
 	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk2_4030
 	$(PYTHON) $(FIX_ATR) $@
 	$(call copy_atr_to_fujinet,$@)
 
-disk2-veratests-80x30.atr: TEST8.COM TESTGS8.COM TESTMAZ8.COM TESTMTX8.COM $(SYS8030) $(DOS20_DIR)/DOS.SYS $(FIX_ATR) $(DOS20_DIR)/DUP.SYS
+disk2-veratests-80x30.atr: TEST8.COM TESTGS8.COM TESTMAZ8.COM TESTMTX8.COM $(TEST_RMT_EXE) $(SYS8030) $(DOS20_DIR)/DOS.SYS $(FIX_ATR) $(DOS20_DIR)/DUP.SYS
 	rm -rf .atrbuild/disk2_8030
 	mkdir -p .atrbuild/disk2_8030
-	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST8.COM TESTGS8.COM TESTMAZ8.COM TESTMTX8.COM $(SYS8030) .atrbuild/disk2_8030/
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST8.COM TESTGS8.COM TESTMAZ8.COM TESTMTX8.COM $(TEST_RMT_EXE) $(SYS8030) .atrbuild/disk2_8030/
 	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk2_8030
 	$(PYTHON) $(FIX_ATR) $@
 	$(call copy_atr_to_fujinet,$@)
 
-disk2-veratests-80x60.atr: TEST6.COM TESTGS6.COM TESTMAZ6.COM TESTMTX6.COM $(SYS8060) $(DOS20_DIR)/DOS.SYS $(FIX_ATR) $(DOS20_DIR)/DUP.SYS
+disk2-veratests-80x60.atr: TEST6.COM TESTGS6.COM TESTMAZ6.COM TESTMTX6.COM $(TEST_RMT_EXE) $(SYS8060) $(DOS20_DIR)/DOS.SYS $(FIX_ATR) $(DOS20_DIR)/DUP.SYS
 	rm -rf .atrbuild/disk2_8060
 	mkdir -p .atrbuild/disk2_8060
-	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST6.COM TESTGS6.COM TESTMAZ6.COM TESTMTX6.COM $(SYS8060) .atrbuild/disk2_8060/
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST6.COM TESTGS6.COM TESTMAZ6.COM TESTMTX6.COM $(TEST_RMT_EXE) $(SYS8060) .atrbuild/disk2_8060/
 	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk2_8060
 	$(PYTHON) $(FIX_ATR) $@
 	$(call copy_atr_to_fujinet,$@)
@@ -363,7 +387,7 @@ clean: clean_objs
 		$(LOADER_LBL) \
 		$(ALL_TEST_EXES) \
 		_TEST.COM _TESTGS.COM _TESTMAZE.COM _TESTMTX.COM \
-		$(VTM_PLAYER_OBJ) $(VU_PM_OBJ) $(VBM_DISPLAY_OBJ) $(VERA_IRQ_OBJ) $(DEMO_SONG_BIN) \
+		$(VTM_PLAYER_OBJ) $(VU_PM_OBJ) $(VBM_DISPLAY_OBJ) $(VERA_IRQ_OBJ) $(DEMO_SONG_BIN) $(RMT_GEN) \
 		$(SYS4030) $(SYS8030) $(SYS8060) \
 		.dos20
 
