@@ -426,3 +426,12 @@ Guida completa: [`Documentation/VERA-IRQ.md`](Documentation/VERA-IRQ.md). `TESTI
 FAIL 0 in emulatore (NTSC e PAL). Per questo test l'emulatore è stato corretto: AFLOW è ora un segnale
 sempre aggiornato (FIFO vuota dopo il reset = 1) e la scrittura di `ISR` cancella solo i bit 2:0,
 come nell'HDL.
+
+---
+
+## Timeout della VERA all'avvio (`vera_pbi_handler.s`)
+
+`WAIT_VERA` attende fino a ~0,7 s che la VERA risponda (byte `'V'` in DCSEL 63). In caso di timeout
+l'`INIT` non scrive sul bus e segnala il problema con **tre beep** dall'altoparlante della console
+(`CONSOL` bit 3, ~1 kHz, ~120 ms ciascuno). Un colore sullo schermo ANTIC non funziona: l'OS reimposta
+`COLOR2`/`COLOR4` dopo l'`INIT` PBI (verificato in emulatore con `-verax16-config-ms 5000`).

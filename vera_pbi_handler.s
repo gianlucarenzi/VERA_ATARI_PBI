@@ -161,7 +161,11 @@ PBI_INIT_VERA_SCREEN:
 INIT_VERA_SCREEN:
     jsr WAIT_VERA
     bcc @VeraUp
-    rts                         ; VERA never answered: do not touch a dead bus
+    ; VERA never answered: do not touch a dead bus, but make the failure
+    ; noticeable.  A colour on the ANTIC screen does not work: the OS
+    ; re-initialises the colour shadows after the PBI INIT.  Use the
+    ; console speaker instead (three ~120 ms beeps at ~1 kHz).
+    jmp VERA_FAIL_BEEP
 @VeraUp:
 
     lda #VERA_DCSEL0
@@ -249,6 +253,39 @@ WAIT_VERA:
     lda #VERA_DCSEL0
     sta VERA_CTRL_REG
     clc
+    rts
+
+; Three beeps on the console speaker (CONSOL bit 3, as the OS key click).
+; ~1 kHz, ~120 ms each, ~100 ms apart; timing stretches a little with ANTIC
+; DMA.  Uses A, X, Y, TMP0.
+VERA_FAIL_BEEP:
+    ldy #3
+@beep:
+    lda #120                    ; 120 periods of ~1 ms
+    sta TMP0
+@period:
+    lda #$08
+    sta CONSOL
+    jsr BEEP_HALF
+    lda #$00
+    sta CONSOL
+    jsr BEEP_HALF
+    dec TMP0
+    bne @period
+    lda #200                    ; ~100 ms of silence
+    sta TMP0
+@gap:
+    jsr BEEP_HALF
+    dec TMP0
+    bne @gap
+    dey
+    bne @beep
+    rts
+
+BEEP_HALF:                      ; ~0.5 ms at 1.79 MHz
+    ldx #180
+@d: dex
+    bne @d
     rts
 
 PBI_CLEAR_SCREEN:
