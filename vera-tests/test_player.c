@@ -1,6 +1,6 @@
 /* test_player.c — VTM PSG music player demo for the VERA PBI card.
  *
- * Loads DEMO.VTM from the current default drive/directory and plays it
+ * Loads DEMO.VTM from the drive the program was loaded from and plays it
  * on 4 VERA PSG voices, ticked once per vertical blank (same poll-loop
  * idiom as test_matrix.c). Shows a 4-channel VU meter via Player/Missile
  * graphics + a Display List Interrupt (see vu_pm.s) while playing — this
@@ -12,7 +12,7 @@
  * on the top row in reverse video. No other status text — only genuine
  * errors are printed, so they don't flash past unread.
  *
- * If D1:DEMO.VBM is also present (see vbm.h/vbm_display.s, workflow/
+ * If DEMO.VBM is also present on the same drive (see vbm.h/vbm_display.s, workflow/
  * 01-vera-asset-format.md's VBM2 format and tools/img2vbm.py), its artwork
  * is shown centered on a black background on VERA's own video output —
  * a completely separate screen from the Atari's own ANTIC/GTIA display
@@ -144,12 +144,31 @@ static void vu_tick(void)
     }
 }
 
+/* Song and artwork are read from the drive the program was loaded from.
+ * DOS 2.0S keeps no "current drive", but the last SIO command before main()
+ * is the read of the executable's last sector, so the OS device control
+ * block still holds its drive (works with real drives and with FujiNet).
+ * Falls back to D1: when the DCB does not describe a disk drive. */
+static char song_path[]  = "D1:DEMO.VTM";
+static char image_path[] = "D1:DEMO.VBM";
+
+static unsigned char load_drive(void)
+{
+    if (OS.dcb.ddevic == 0x31 && OS.dcb.dunit >= 1 && OS.dcb.dunit <= 8)
+        return OS.dcb.dunit;
+    return 1;
+}
+
 int main(void)
 {
     void *song;
     int rval=0;
     unsigned char ch;
     unsigned char have_image;
+    unsigned char drive = load_drive();   /* must be read before any disk I/O */
+
+    song_path[1]  = (char)('0' + drive);
+    image_path[1] = (char)('0' + drive);
 
     putchar(125);            /* clear screen, home cursor (ATASCII CLEAR) */
     OS.color2 = 0;           /* background: black */
@@ -157,9 +176,9 @@ int main(void)
 
     vera_require();
 
-    song = vtm_load_file("D1:DEMO.VTM", load_progress);
+    song = vtm_load_file(song_path, load_progress);
     if (!song) {
-        printf("ERROR: could not load D1:DEMO.VTM\n");
+        printf("ERROR: could not load %s\n", song_path);
         rval=1;
         goto err;
     }
@@ -173,12 +192,12 @@ int main(void)
         goto err;
     }
 
-    /* Artwork is optional: D1:DEMO.VBM (see workflow/01-vera-asset-
+    /* Artwork is optional: DEMO.VBM on the load drive (see workflow/01-vera-asset-
      * format.md, tools/img2vbm.py) shows on VERA's own video output —
      * a separate screen from this Atari text/VU-meter display — while
      * the song plays. If it's missing, playback proceeds exactly as
      * before with no VERA display-mode change at all. */
-    have_image = vbm_load_file("D1:DEMO.VBM", image_progress);
+    have_image = vbm_load_file(image_path, image_progress);
     if (have_image) {
         putchar('\n');
         putchar('\n');   /* move past the image progress bar row */
