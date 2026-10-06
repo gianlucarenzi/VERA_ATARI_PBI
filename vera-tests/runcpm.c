@@ -198,15 +198,39 @@ static unsigned char kbd_translate(unsigned char kb)
     return c;
 }
 
+/*
+ * The VERA driver owns the keyboard IRQ and VBI key detection: every key we
+ * poll here is ALSO pushed (with auto-repeat) into the driver's E: key ring
+ * and into OS.ch.  Nothing in RUNCPM reads those, so they would pile up and
+ * be delivered to DOS as typed input on exit.  Flush them once the key is
+ * released (flushing while it is still held would make the VBI detect it
+ * again), and once more at exit.
+ */
+static void vera_flush_keys(void)
+{
+    OS.ch = 0xFF;
+    if (vctl && vera_api_entry)
+    {
+        vctl[VCTL_REQUEST] = VERA_REQ_FLUSH_KBD;
+        vera_api_entry();
+    }
+}
+
 static unsigned char kbd_poll_kbcode(void)
 {
     static unsigned char last_kb = 0xFF;
+    static unsigned char dirty   = 0;
     unsigned char sk = *(volatile unsigned char*)0xD20F;
     unsigned char kb;
 
     if (sk & 0x04)          /* bit2=1 = no key held */
     {
         last_kb = 0xFF;
+        if (dirty)
+        {
+            dirty = 0;
+            vera_flush_keys();
+        }
         return 0xFF;
     }
 
@@ -215,6 +239,7 @@ static unsigned char kbd_poll_kbcode(void)
         return 0xFF;
 
     last_kb = kb;
+    dirty = 1;
     return kbd_translate(kb);
 }
 
@@ -1527,6 +1552,9 @@ int main(void)
     OS.vprced = old_vprced;
     PIA.pactl |= old_enabled;
     OS.soundr  = old_soundr;
+
+    /* Drop everything the VERA driver queued while we were polling keys */
+    vera_flush_keys();
 
     return 0;
 }
