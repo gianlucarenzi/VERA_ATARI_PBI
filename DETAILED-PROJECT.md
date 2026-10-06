@@ -65,7 +65,7 @@ Il nucleo dell'emulatore `atari800` è stato esteso per supportare la periferica
 *   **Emulazione hardware:**
     *   **Registri VERA:** Emulazione completa dei registri VERA (porte indirizzo, porte dati, CTRL, IEN, ISR) e dei registri DC multiplexati.
     *   **VRAM:** Emula lo spazio di memoria VRAM da 128KB.
-    *   **Coprocessore FX:** Emulazione del coprocessore VERA FX conforme all'HDL 47.0.2: i registri FX sono in **sola scrittura** (la lettura di `$D109-$D10C` con DCSEL≥2 restituisce `'V',47,0,0`), tranne FX_CTRL (DCSEL=2 `$D109`) e POLY_FILL_L/H (DCSEL=5 `$D10B/$D10C`). Il bit 7 di CTRL riconfigura l'intero FPGA (non è un soft reset), la VERA non ha reset esterno (il RESET Atari non la tocca), per ~100 ms dopo power-on/riconfigurazione il bus non è pilotato, l'IRQ raggiunge la CPU, e il quadro VERA gira a 59,94 Hz asincrono rispetto all'Atari.
+    *   **Coprocessore FX:** Emulazione del coprocessore VERA FX conforme all'HDL 48.0.1 (`fpga-vera/48.0.1`): i registri FX sono in **sola scrittura** (la lettura di `$D109-$D10C` con DCSEL≥2 restituisce i byte di identità del firmware, come DCSEL 63: `'V',48,0,1`), tranne FX_CTRL (DCSEL=2 `$D109`) e POLY_FILL_L/H (DCSEL=5 `$D10B/$D10C`). Il bit 7 di CTRL riconfigura l'intero FPGA (non è un soft reset), la VERA non ha reset esterno (il RESET Atari non la tocca), per ~100 ms dopo power-on/riconfigurazione il bus non è pilotato, l'IRQ raggiunge la CPU, e il quadro VERA gira a 59,94 Hz asincrono rispetto all'Atari.
     *   **Audio/SPI:** Emulazione dei canali audio PSG/PCM di VERA e dell'interfaccia SPI per l'emulazione della scheda SD.
 *   **Integrazione bus:**
     *   **Gestione IRQ:** Gestisce le richieste di interrupt da VERA alla CPU Atari in base alle impostazioni IEN/ISR.

@@ -14,9 +14,10 @@
  * vera_detect() — probe the VeraX16 PBI video card at $D100.
  *
  * Selects DCSEL=63 (CTRL=$7E) and checks the identity bytes: $D109 = 'V',
- * $D10A = 47.  Unlike a write/read-back probe this cannot be fooled by an
- * undriven bus echoing the last written value (the written $7E never equals
- * 'V').  CTRL is restored to 0 afterwards.
+ * $D10A = major version >= 47 (the FX firmware generation: 47.0.2 reads
+ * 'V',47,0,0, 48.0.1 reads 'V',48,0,1).  Unlike a write/read-back probe
+ * this cannot be fooled by an undriven bus echoing the last written value
+ * (the written $7E never equals 'V').  CTRL is restored to 0 afterwards.
  *
  * Returns VERA_CARD_ID (0x5658, 'VX') when the card responds correctly,
  * 0 otherwise (card absent, still configuring, or emulator not started
@@ -31,7 +32,7 @@ static unsigned int vera_detect(void)
     v = *(volatile unsigned char *)0xD109;
     m = *(volatile unsigned char *)0xD10A;
     *ctrl = 0x00;
-    if (v != 'V' || m != 47) return 0;
+    if (v != 'V' || m < 47) return 0;
 
     /* Restore VRAM address registers to a safe state */
     *(volatile unsigned char *)0xD100 = 0x00;

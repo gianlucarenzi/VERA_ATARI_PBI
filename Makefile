@@ -226,8 +226,10 @@ ALL_TEST_EXES = $(TEST_EXES) $(TESTGS_EXES) $(TESTMAZE_EXES) $(TESTMTX_EXES) $(T
 # $(1) = output base name (7 chars max, no digit suffix)
 # $(2) = intermediate raw binary (e.g. _TEST.COM)
 # $(3) = C source file
+TEST_HEADERS = vera-tests/vera_detect.h vera-tests/vera_keys.h
+
 define make_test_variants
-$(2): $(3)
+$(2): $(3) $(TEST_HEADERS)
 	cl65 -t atari --start-addr 0x5000 -o $$@ $$<
 
 $(1)4.COM: $(2) $(SYS4030) $(BUNDLE_VERA)
@@ -261,7 +263,7 @@ $(RUNCPM80_EXE): $(RUNCPM_EXE) $(SYS8030) $(BUNDLE_VERA)
 vera-tests/serterm_handler.o: vera-tests/serterm_handler.s
 	$(CA65) -I . -o $@ $<
 
-$(TEST_FX_EXE): $(TEST_FX_SRC)
+$(TEST_FX_EXE): $(TEST_FX_SRC) vera-tests/vera_detect.h
 	cl65 -t atari --start-addr 0x5000 -o $(TEST_FX_EXE) $(TEST_FX_SRC)
 
 # VERA IRQ hook on VIMIRQ (standalone, no VERA.SYS needed)

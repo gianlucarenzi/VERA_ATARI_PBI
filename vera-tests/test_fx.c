@@ -8,7 +8,8 @@
  *
  * Tests:
  *  2. FX_CTRL (DCSEL=2) write/read roundtrip
- *  3. All other FX regs are write-only (read = 'V',47,0,0 as on real HW)
+ *  3. All other FX regs are write-only: reads return the firmware identity
+ *     bytes of DCSEL 63 ('V',major,minor,build: 'V',48,0,1 on 48.0.1)
  *  9. Multiplier: A*B result written to VRAM via DATA0
  * 10. Transparency: zero byte skipped, non-zero written
  *
@@ -171,26 +172,41 @@ static void test_fx_ctrl(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* Test 3: FX registers are WRITE-ONLY on real VERA (FPGA 47.0.2)       */
+/* Test 3: FX registers are WRITE-ONLY on the real VERA                */
 /* Only FX_CTRL (DCSEL=2,$09) and POLY_FILL_L/H (DCSEL=5,$0B/$0C) are   */
-/* readable.  Every other DCSEL>=2 read returns the identity bytes      */
-/* 'V',47,0,0 for $09..$0C.  Writes are exercised here as a smoke test; */
-/* their effect is verified by the behavioural tests below.             */
+/* readable.  Every other DCSEL>=2 read returns the firmware identity   */
+/* bytes, the same as DCSEL 63: 'V',major,minor,build ('V',47,0,0 on    */
+/* 47.0.2, 'V',48,0,1 on 48.0.1).  Writes are exercised as a smoke      */
+/* test; their effect is verified by the behavioural tests below.       */
 /* ------------------------------------------------------------------ */
+static unsigned char g_id[4];   /* DCSEL 63 identity: 'V', major, minor, build */
+
 static void check_wo(unsigned char dcsel, const char *tag,
                      unsigned char r09, unsigned char r0a,
                      unsigned char r0b, unsigned char r0c)
 {
     VERA_CTRL = dcsel;
-    if (r09) check_b(tag, VERA_REG09, 'V');
-    if (r0a) check_b(tag, VERA_REG0A, 47);
-    if (r0b) check_b(tag, VERA_REG0B, 0);
-    if (r0c) check_b(tag, VERA_REG0C, 0);
+    if (r09) check_b(tag, VERA_REG09, g_id[0]);
+    if (r0a) check_b(tag, VERA_REG0A, g_id[1]);
+    if (r0b) check_b(tag, VERA_REG0B, g_id[2]);
+    if (r0c) check_b(tag, VERA_REG0C, g_id[3]);
 }
 
 static void test_write_only(void)
 {
     g_section = "[3]";
+
+    /* Firmware identity from DCSEL 63 */
+    VERA_CTRL = 0x7E;
+    g_id[0] = VERA_REG09;
+    g_id[1] = VERA_REG0A;
+    g_id[2] = VERA_REG0B;
+    g_id[3] = VERA_REG0C;
+    VERA_CTRL = DCSEL_0;
+    check_b("DC63 'V'", g_id[0], 'V');
+    check_b("DC63 major >= 47", g_id[1] >= 47 ? g_id[1] : 0, g_id[1]);
+    printf("VERA firmware %u.%u.%u\n",
+           (unsigned int)g_id[1], (unsigned int)g_id[2], (unsigned int)g_id[3]);
 
     /* DCSEL=2: only $09 (FX_CTRL) is readable */
     VERA_CTRL  = DCSEL_2;
