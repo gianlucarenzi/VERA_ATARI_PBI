@@ -42,6 +42,16 @@
 .ifdef RMT_VERA
         .export trackn_audf, trackn_audc, v_audctl, v_audctl2
         .export _rmt_pokey_mute, _rmt_tracks
+;* the same channel state under C names (rmtplay.c)
+        .export _rmt_chan_audf := trackn_audf, _rmt_chan_audc := trackn_audc
+        .export _rmt_audctl := v_audctl, _rmt_audctl2 := v_audctl2
+.endif
+;* song position for players that show it (rmtplay.c): song line pointer
+;* (next line), row in the track, track length, song speed
+        .exportzp _rmt_p_song := p_song
+        .export _rmt_abeat := v_abeat, _rmt_maxtracklen := v_maxtracklen
+.if FEAT_CONSTANTSPEED = 0
+        .export _rmt_speed := v_speed
 .endif
 ;* the module (tools/rmt2ca65.py) states how many tracks it was made for
         .importzp rmt_song_tracks

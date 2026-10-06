@@ -311,6 +311,32 @@ $(TEST_RMT_EXE): $(RMT_DIR)/test_rmt.c $(RMT_DIR)/rmt.h $(RMT_ASM) $(RMT_DIR)/rm
 	     -DRMT_SONG_NAME=\"$(RMT_SONGNAME)\" \
 	     -o $@ $(RMT_DIR)/test_rmt.c $(RMT_ASM) $(RMT_GEN)/psgtab.s $(RMT_GEN)/song.s
 
+# RMTPLAY: the same player with a visualizer on the Atari screen (ANTIC), in
+# the style of the RMT XEX/SAP export: song name / author / date, one volume
+# bar per channel, AUDF/AUDC/AUDCTL, song line, row, speed, play time.
+#   make RMTPLAY.COM [RMT_SONG=...] [RMT_NAME="..."] [RMT_AUTHOR="..."] [RMT_DATE=...]
+# Fields left empty come from the text stored in the .rmt (tools/rmtinfo.py).
+RMT_PLAY_EXE = RMTPLAY.COM
+RMT_NAME    ?=
+RMT_AUTHOR  ?=
+RMT_DATE    ?=
+
+# song info options kept in a stamp file: changing them regenerates the header
+$(RMT_GEN)/songinfo.cfg: FORCE
+	@mkdir -p $(RMT_GEN)
+	@printf '%s\n' '$(RMT_SONG)|$(RMT_NAME)|$(RMT_AUTHOR)|$(RMT_DATE)' | cmp -s - $@ || \
+		printf '%s\n' '$(RMT_SONG)|$(RMT_NAME)|$(RMT_AUTHOR)|$(RMT_DATE)' > $@
+
+$(RMT_GEN)/songinfo.h: $(RMT_SONG) $(RMT_DIR)/tools/rmtinfo.py $(RMT_GEN)/songinfo.cfg
+	$(PYTHON) $(RMT_DIR)/tools/rmtinfo.py $(RMT_SONG) $@ \
+		--name "$(RMT_NAME)" --author "$(RMT_AUTHOR)" --date "$(RMT_DATE)"
+
+$(RMT_PLAY_EXE): $(RMT_DIR)/rmtplay.c $(RMT_DIR)/rmtdli.s $(RMT_DIR)/rmt.h $(RMT_ASM) $(RMT_DIR)/rmt_feat.inc $(RMT_DIR)/testrmt.cfg $(RMT_GEN)/psgtab.s $(RMT_GEN)/song.s $(RMT_GEN)/songinfo.h vera_common.inc vera-tests/vera_detect.h
+	cl65 -t atari -O -C $(RMT_DIR)/testrmt.cfg -I vera-tests -I $(RMT_DIR) -I $(RMT_GEN) \
+	     --asm-include-dir . --asm-include-dir $(RMT_DIR) --asm-define RMT_VERA \
+	     --asm-define RMT_TRACKS=$(RMT_TRACKS) -DRMT_TRACKS=$(RMT_TRACKS) \
+	     -o $@ $(RMT_DIR)/rmtplay.c $(RMT_DIR)/rmtdli.s $(RMT_ASM) $(RMT_GEN)/psgtab.s $(RMT_GEN)/song.s
+
 # TESTRIO: same player while loading assets from disk through SIO (from
 # AT2019/ATARI-Driver/PokeyATest). Own bootable disk, MyPicoDos autorun:
 #   make disk4-rmtio.atr [RMT_SONG=...] [RIO_ASSET_SIZES="2048 16384"]

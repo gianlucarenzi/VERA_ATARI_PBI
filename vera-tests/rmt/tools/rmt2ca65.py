@@ -129,6 +129,10 @@ def main():
                 flush()
         i += 1
     flush()
+    # end of the module: the song lines run from the header's song pointer
+    # up to here, so a player can show "line n of m"
+    out.append("        .export %s_end" % label)
+    out.append("%s_end:" % label)
     out.append("")
 
     open(dst, "w").write("\n".join(out))
