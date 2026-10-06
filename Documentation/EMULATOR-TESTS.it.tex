@@ -181,9 +181,36 @@ audio, SPI) e \texttt{src/vera\_video.c} (rendering). Senza
 \texttt{-\/-enable-pbi-verax16} le opzioni \texttt{-verax16} non
 esistono.
 
-Non serve una ROM del sistema operativo Atari: se
-\texttt{\textasciitilde{}/.atari800.cfg} non ne indica una, atari800 usa
-AltirraOS e Altirra BASIC integrati.
+\subsection{ROM del sistema operativo
+Atari}\label{rom-del-sistema-operativo-atari}
+
+Se atari800 è compilato con libcurl (\texttt{configure} attiva da solo
+la funzione di download quando la trova) e non è configurato nessun file
+ROM del sistema operativo, all'avvio \textbf{scarica le ROM da
+Internet}: preleva
+\texttt{http://www.emulators.com/freefile/pcxf380.zip} (PC Xformer 3.8),
+estrae i file \texttt{.rom} in \texttt{../atari800/src/rom/}, li usa (OS
+XL e BASIC originali Atari) e ne scrive i percorsi in
+\texttt{../atari800/src/.atari800.cfg}. Da quel momento non li scarica
+più.
+
+atari800 legge \texttt{.atari800.cfg} dalla cartella dell'eseguibile
+prima di \texttt{\textasciitilde{}/.atari800.cfg}: una volta creato
+\texttt{../atari800/src/.atari800.cfg}, lanciando
+\texttt{../atari800/src/atari800} il file
+\texttt{\textasciitilde{}/.atari800.cfg} non viene più letto.
+
+Per usare AltirraOS e Altirra BASIC integrati, senza download, compilare
+con:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\ExtensionTok{./configure} \AttributeTok{{-}{-}enable{-}pbi{-}verax16} \AttributeTok{{-}{-}disable{-}download}
+\end{Highlighting}
+\end{Shaded}
+
+e lasciare vuoti i percorsi \texttt{ROM\_OS\_*} nel file di
+configurazione.
 
 \subsection{Compilare ROM, driver e dischi di
 test}\label{compilare-rom-driver-e-dischi-di-test}

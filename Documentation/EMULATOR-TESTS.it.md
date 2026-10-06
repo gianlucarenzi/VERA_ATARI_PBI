@@ -44,8 +44,29 @@ L'emulazione della VERA è in `src/pbi_verax16.c` (registri, FX, audio, SPI)
 e `src/vera_video.c` (rendering). Senza `--enable-pbi-verax16` le opzioni
 `-verax16` non esistono.
 
-Non serve una ROM del sistema operativo Atari: se `~/.atari800.cfg` non ne
-indica una, atari800 usa AltirraOS e Altirra BASIC integrati.
+## ROM del sistema operativo Atari
+
+Se atari800 è compilato con libcurl (`configure` attiva da solo la funzione
+di download quando la trova) e non è configurato nessun file ROM del
+sistema operativo, all'avvio **scarica le ROM da Internet**: preleva
+`http://www.emulators.com/freefile/pcxf380.zip` (PC Xformer 3.8), estrae i
+file `.rom` in `../atari800/src/rom/`, li usa (OS XL e BASIC originali
+Atari) e ne scrive i percorsi in `../atari800/src/.atari800.cfg`. Da quel
+momento non li scarica più.
+
+atari800 legge `.atari800.cfg` dalla cartella dell'eseguibile prima di
+`~/.atari800.cfg`: una volta creato `../atari800/src/.atari800.cfg`,
+lanciando `../atari800/src/atari800` il file `~/.atari800.cfg` non viene
+più letto.
+
+Per usare AltirraOS e Altirra BASIC integrati, senza download, compilare
+con:
+
+```sh
+./configure --enable-pbi-verax16 --disable-download
+```
+
+e lasciare vuoti i percorsi `ROM_OS_*` nel file di configurazione.
 
 ## Compilare ROM, driver e dischi di test
 
