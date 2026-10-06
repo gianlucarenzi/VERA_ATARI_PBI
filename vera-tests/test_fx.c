@@ -3,19 +3,12 @@
  * Standalone binary: does NOT require VERA.SYS.  Output goes through the
  * standard Atari E: handler (40-column TV display), not VERA.
  *
- * Because no driver owns the VERA display, the test issues a VERA chip
- * soft-reset (CTRL bit 7) at startup to guarantee deterministic FX state.
+ * CTRL bit 7 is NOT used: on real VERA it triggers an FPGA reconfigure.
  * DCSEL=0/1 registers (DC_VIDEO, DC_HSCALE…) are not relevant here.
  *
  * Tests:
- *  1. Reset state: X/Y_POS_S == 0x80 after chip reset (bug-9 fix)
  *  2. FX_CTRL (DCSEL=2) write/read roundtrip
- *  3. FX_TILEBASE / FX_MAPBASE (DCSEL=2) roundtrip
- *  4. FX_MULT (DCSEL=2) write/read roundtrip
- *  5. FX_X/Y_INCR (DCSEL=3) roundtrip
- *  6. FX_X/Y_POS integer part (DCSEL=4) roundtrip
- *  7. FX_X/Y_POS_S subpixel (DCSEL=5) roundtrip + cross-check DCSEL=4
- *  8. FX cache bytes (DCSEL=6) write/read
+ *  3. All other FX regs are write-only (read = 'V',47,0,0 as on real HW)
  *  9. Multiplier: A*B result written to VRAM via DATA0
  * 10. Transparency: zero byte skipped, non-zero written
  *
@@ -169,184 +162,59 @@ static void test_fx_ctrl(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* Test 3: FX_TILEBASE / FX_MAPBASE (DCSEL=2) roundtrip               */
+/* Test 3: FX registers are WRITE-ONLY on real VERA (FPGA 47.0.2)       */
+/* Only FX_CTRL (DCSEL=2,$09) and POLY_FILL_L/H (DCSEL=5,$0B/$0C) are   */
+/* readable.  Every other DCSEL>=2 read returns the identity bytes      */
+/* 'V',47,0,0 for $09..$0C.  Writes are exercised here as a smoke test; */
+/* their effect is verified by the behavioural tests below.             */
 /* ------------------------------------------------------------------ */
-static void test_tilebase_mapbase(void)
+static void check_wo(unsigned char dcsel, const char *tag,
+                     unsigned char r09, unsigned char r0a,
+                     unsigned char r0b, unsigned char r0c)
 {
-    unsigned char v;
+    VERA_CTRL = dcsel;
+    if (r09) check_b(tag, VERA_REG09, 'V');
+    if (r0a) check_b(tag, VERA_REG0A, 47);
+    if (r0b) check_b(tag, VERA_REG0B, 0);
+    if (r0c) check_b(tag, VERA_REG0C, 0);
+}
 
-    printf("\n[3] FX_TILEBASE / FX_MAPBASE\n");
+static void test_write_only(void)
+{
+    printf("\n[3] FX regs write-only (read = V,47,0,0)\n");
 
-    VERA_CTRL = DCSEL_2;
-
-    /* FX_TILEBASE: tiledata_base=0x3F, clip=0, 2bit_poly=1 → 0xFD */
+    /* DCSEL=2: only $09 (FX_CTRL) is readable */
+    VERA_CTRL  = DCSEL_2;
     VERA_REG0A = 0xFD;
-    v = VERA_REG0A;
-    check_b("FX_TILEBASE=0xFD", v, 0xFD);
-
-    /* FX_MAPBASE: map_base=0x24, map_size=3 → (0x24<<2)|3 = 0x93 */
     VERA_REG0B = 0x93;
-    v = VERA_REG0B;
-    check_b("FX_MAPBASE=0x93", v, 0x93);
-
-    /* Restore */
-    VERA_REG0A = 0x00;
-    VERA_REG0B = 0x00;
-    VERA_CTRL  = DCSEL_0;
-}
-
-/* ------------------------------------------------------------------ */
-/* Test 4: FX_MULT (DCSEL=2) write/read roundtrip                      */
-/* Bits 7 (ResetAccum) and 6 (AccumTrigger) are write-only → read 0.  */
-/* ------------------------------------------------------------------ */
-static void test_fx_mult_reg(void)
-{
-    unsigned char v;
-
-    printf("\n[4] FX_MULT reg roundtrip\n");
-
-    VERA_CTRL = DCSEL_2;
-    /* accumulate=0, add_or_sub=1, mult_enabled=1,
-     * cache_byte_index=3, nibble_index=0, inc_mode=1 → 0x3D
-     * Expected read: (0<<6)|(1<<5)|(1<<4)|(3<<2)|(0<<1)|1 = 0x3D */
     VERA_REG0C = 0x3D;
-    v = VERA_REG0C;
-    check_b("FX_MULT=0x3D r/b", v, 0x3D);
+    check_wo(DCSEL_2, "DC2 $0A/$0B/$0C", 0, 1, 1, 1);
+    VERA_CTRL = DCSEL_2; VERA_REG0A = 0; VERA_REG0B = 0; VERA_REG0C = 0;
 
-    VERA_REG0C = 0x00;
-    v = VERA_REG0C;
-    check_b("FX_MULT=0x00 r/b", v, 0x00);
-
-    VERA_CTRL = DCSEL_0;
-}
-
-/* ------------------------------------------------------------------ */
-/* Test 5: FX_X/Y_INCR (DCSEL=3) roundtrip                            */
-/* ------------------------------------------------------------------ */
-static void test_incr(void)
-{
-    unsigned char vl, vh;
-
-    printf("\n[5] FX_X/Y_INCR roundtrip\n");
-
+    /* DCSEL=3 INCR */
     VERA_CTRL = DCSEL_3;
+    VERA_REG09 = 0x34; VERA_REG0A = 0x01; VERA_REG0B = 0xAB; VERA_REG0C = 0x82;
+    check_wo(DCSEL_3, "DC3 INCR", 1, 1, 1, 1);
+    VERA_CTRL = DCSEL_3;
+    VERA_REG09 = 0; VERA_REG0A = 0; VERA_REG0B = 0; VERA_REG0C = 0;
 
-    VERA_REG09 = 0x34;
-    VERA_REG0A = 0x01;   /* 32x flag=0, upper 7 bits=0x01 */
-    vl = VERA_REG09;
-    vh = VERA_REG0A;
-    check_b("X_INCR_L=0x34", vl, 0x34);
-    check_b("X_INCR_H=0x01", vh, 0x01);
-
-    VERA_REG0B = 0xAB;
-    VERA_REG0C = 0x82;   /* 32x flag=1, upper 7 bits=0x02 */
-    vl = VERA_REG0B;
-    vh = VERA_REG0C;
-    check_b("Y_INCR_L=0xAB", vl, 0xAB);
-    check_b("Y_INCR_H=0x82", vh, 0x82);
-
-    /* Zero incr to avoid unintended position drift */
-    VERA_REG09 = 0x00;
-    VERA_REG0A = 0x00;
-    VERA_REG0B = 0x00;
-    VERA_REG0C = 0x00;
-    VERA_CTRL  = DCSEL_0;
-}
-
-/* ------------------------------------------------------------------ */
-/* Test 6: FX_X/Y_POS integer part (DCSEL=4) roundtrip                 */
-/* ------------------------------------------------------------------ */
-static void test_pos_integer(void)
-{
-    unsigned char vl, vh;
-
-    printf("\n[6] FX_X/Y_POS integer roundtrip\n");
-
+    /* DCSEL=4 POS integer */
     VERA_CTRL = DCSEL_4;
+    VERA_REG09 = 0x50; VERA_REG0A = 0x02; VERA_REG0B = 0xC0; VERA_REG0C = 0x85;
+    check_wo(DCSEL_4, "DC4 POS", 1, 1, 1, 1);
+    VERA_CTRL = DCSEL_4;
+    VERA_REG09 = 0; VERA_REG0A = 0; VERA_REG0B = 0; VERA_REG0C = 0;
 
-    /* X: integer=0x250, sign-ext bit=0 → POS_L=0x50, POS_H=0x02 */
-    VERA_REG09 = 0x50;
-    VERA_REG0A = 0x02;
-    vl = VERA_REG09;
-    vh = VERA_REG0A;
-    check_b("X_POS_L=0x50", vl, 0x50);
-    check_b("X_POS_H=0x02", vh, 0x02);
+    /* DCSEL=5: $09/$0A readable as identity; $0B/$0C = POLY_FILL (live) */
+    VERA_CTRL = DCSEL_5;
+    VERA_REG09 = 0x3C; VERA_REG0A = 0x3C;
+    check_wo(DCSEL_5, "DC5 POS_S", 1, 1, 0, 0);
+    VERA_CTRL = DCSEL_5; VERA_REG09 = 0; VERA_REG0A = 0;
 
-    /* Y: Y_Pos[7:0]=0xC0, Y_Pos[10:8]=5, Y[-9]=1 → POS_H=0x85 */
-    VERA_REG0B = 0xC0;
-    VERA_REG0C = 0x85;
-    vl = VERA_REG0B;
-    vh = VERA_REG0C;
-    check_b("Y_POS_L=0xC0", vl, 0xC0);
-    check_b("Y_POS_H=0x85", vh, 0x85);
-
-    VERA_CTRL = DCSEL_0;
-}
-
-/* ------------------------------------------------------------------ */
-/* Test 7: FX_X_POS_S subpixel (DCSEL=5) roundtrip + cross-check      */
-/* Writing POS_S must not disturb the integer part (DCSEL=4).          */
-/* ------------------------------------------------------------------ */
-static void test_pos_subpixel(void)
-{
-    unsigned char vs, vl_after;
-
-    printf("\n[7] FX_X_POS_S subpixel roundtrip\n");
-
-    /* Set a known integer part */
-    VERA_CTRL  = DCSEL_4;
-    VERA_REG09 = 0x50;   /* X_POS_L */
-    VERA_REG0A = 0x02;   /* X_POS_H */
-
-    /* Write subpixel */
-    VERA_CTRL  = DCSEL_5;
-    VERA_REG09 = 0x3C;
-    vs = VERA_REG09;
-    check_b("X_POS_S=0x3C", vs, 0x3C);
-
-    /* Integer part must be unchanged */
-    VERA_CTRL  = DCSEL_4;
-    vl_after   = VERA_REG09;
-    check_b("X_POS_L still 0x50", vl_after, 0x50);
-
-    /* Restore positions to zero */
-    VERA_CTRL  = DCSEL_4;
-    VERA_REG09 = 0x00;
-    VERA_REG0A = 0x00;
-    VERA_REG0B = 0x00;
-    VERA_REG0C = 0x00;
-    VERA_CTRL  = DCSEL_5;
-    VERA_REG09 = 0x00;
-    VERA_REG0A = 0x00;
-    VERA_CTRL  = DCSEL_0;
-}
-
-/* ------------------------------------------------------------------ */
-/* Test 8: FX cache bytes (DCSEL=6) write/read                         */
-/* Side-effects: reading $D109 resets accumulator; $D10A triggers an   */
-/* accumulate step.  Neither affects the byte values returned.         */
-/* ------------------------------------------------------------------ */
-static void test_cache_rw(void)
-{
-    unsigned char c0, c1, c2, c3;
-
-    printf("\n[8] FX cache bytes roundtrip\n");
-
-    VERA_CTRL  = DCSEL_6;
-    VERA_REG09 = 0xAA;
-    VERA_REG0A = 0xBB;
-    VERA_REG0B = 0xCC;
-    VERA_REG0C = 0xDD;
-
-    c0 = VERA_REG09;   /* side-effect: resets accumulator */
-    c1 = VERA_REG0A;   /* side-effect: accumulate step    */
-    c2 = VERA_REG0B;
-    c3 = VERA_REG0C;
-
-    check_b("cache[0]=0xAA", c0, 0xAA);
-    check_b("cache[1]=0xBB", c1, 0xBB);
-    check_b("cache[2]=0xCC", c2, 0xCC);
-    check_b("cache[3]=0xDD", c3, 0xDD);
+    /* DCSEL=6 cache: reads of $09/$0A have side effects but return identity */
+    VERA_CTRL = DCSEL_6;
+    VERA_REG09 = 0xAA; VERA_REG0A = 0xBB; VERA_REG0B = 0xCC; VERA_REG0C = 0xDD;
+    check_wo(DCSEL_6, "DC6 CACHE", 1, 1, 1, 1);
 
     VERA_CTRL = DCSEL_0;
 }
@@ -638,26 +506,19 @@ int main(void)
 {
     vera_require();
 
-    /* Soft-reset the VERA chip: clears all FX state, sets fx_pixel_pos = 256
-     * (POS_S = 0x80).  Safe here because VERA is not driving the display. */
-    VERA_CTRL = 0x80;
+    /* NOTE: do NOT write CTRL bit 7: on real VERA it reconfigures the whole
+     * FPGA (reloads the bitstream, VRAM lost, bus dead for ~100 ms).
+     * Start from a known FX state by writing the registers instead. */
+    VERA_CTRL  = DCSEL_2;
+    VERA_REG09 = 0x00;
+    VERA_REG0C = 0x80;      /* ResetAccum trigger, mult/accum off */
+    VERA_CTRL  = DCSEL_0;
 
     printf("VERA FX coprocessor test\n");
     printf("========================\n");
 
-    printf("\n[1] Post-reset position (bug-9: POS_S must be 0x80)\n");
-    VERA_CTRL = DCSEL_5;
-    check_b("X_POS_S after reset", VERA_REG09, 0x80);
-    check_b("Y_POS_S after reset", VERA_REG0A, 0x80);
-    VERA_CTRL = DCSEL_0;
-
     test_fx_ctrl();
-    test_tilebase_mapbase();
-    test_fx_mult_reg();
-    test_incr();
-    test_pos_integer();
-    test_pos_subpixel();
-    test_cache_rw();
+    test_write_only();
     test_multiplier();
     test_transparency();
     test_cache_manual();

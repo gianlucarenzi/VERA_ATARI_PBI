@@ -8,12 +8,13 @@
 ; Atari PBI ROM header at $D800 (Earl Rice / ANTIC Magazine format):
 ;   $D800-$D801  Checksum word (optional, 0 here)
 ;   $D802        Revision byte
-;   $D803        PBI device ID mask  (power-of-2, 1-$80)
-;   $D804        Device type / flags
+;   $D803        PBI ID byte 1: ALWAYS $80 (the OS scan checks this value; the
+;                device bit selected through $D1FF is independent of it)
+;   $D804        Device type / flags (unused)
 ;   $D805-$D807  JMP to low-level I/O handler
 ;   $D808-$D80A  JMP to interrupt handler
-;   $D80B        Manufacturer code ($91 = Atari-compatible)
-;   $D80C        CIO handler device name (ASCII, stored in HATABS)
+;   $D80B        PBI ID byte 2: ALWAYS $91
+;   $D80C        CIO device name (ASCII); CIO matches it against PBI ROMs
 ;   $D80D-$D80E  OPEN  vector (handler address - 1)
 ;   $D80F-$D810  CLOSE vector
 ;   $D811-$D812  GET BYTE vector
@@ -90,7 +91,7 @@ Done:
 
     .word $0000
     .byte $00
-    .byte DEVICE_ID_MASK
+    .byte $80                   ; ID byte 1 (fixed, not the $D1FF device bit)
     .byte $00
 
     jmp IOVECTOR
@@ -113,9 +114,22 @@ IOVECTOR:
     clc
     rts
 
+; Called by the OS IRQ handler with this card selected, when $D1FF shows
+; our bit.  IRQ_N is level-sensitive: the source must be removed here or the
+; OS will re-enter forever.
+;   ISR bits 0-2 (VSYNC/LINE/SPRCOL): write-1-to-clear.
+;   ISR bit 3 (AUDIO FIFO LOW): not clearable, mask it in IEN instead.
 IRQVECTOR:
-    lda #$00
-    sta VERA_ISR
+    lda VERA_ISR
+    and #$07
+    sta VERA_ISR                ; ack VSYNC/LINE/SPRCOL
+    lda VERA_ISR
+    and #$08
+    beq @NoAflow
+    lda VERA_IEN
+    and #$F7                    ; AFLOW source stays until the FIFO is refilled
+    sta VERA_IEN
+@NoAflow:
     rts
 
 ; Offsets within the 16-byte VCTL block (signature + ptr table).
@@ -146,6 +160,9 @@ INIT:
 PBI_INIT_VERA_SCREEN:
 INIT_VERA_SCREEN:
     jsr WAIT_VERA
+    bcc @VeraUp
+    rts                         ; VERA never answered: do not touch a dead bus
+@VeraUp:
 
     lda #VERA_DCSEL0
     sta VERA_CTRL_REG
@@ -207,17 +224,31 @@ INIT_VERA_SCREEN:
     jsr PRINT_HOST_LINE
     rts
 
+; Wait for the FPGA to finish configuring from flash (tens to hundreds of
+; ms after power-on; the VERA has no reset input, only an internal POR).
+; Probe = DCSEL 63 identity byte at $D109 ('V').  Do NOT probe by write/read
+; of ADDR_L: an undriven bus can echo the last written value.
+; Timeout ~0.7 s.  Returns C=0 if VERA answered, C=1 on timeout.
 WAIT_VERA:
     ldx #$FF
-@Loop:
-    lda #$2A
-    sta VERA_ADDR_L
-    lda VERA_ADDR_L
-    cmp #$2A
-    beq @Done
+@Outer:
+    ldy #$00
+@Inner:
+    lda #$7E                    ; DCSEL=63, ADDRSEL=0
+    sta VERA_CTRL_REG
+    lda VERA_DC_VIDEO           ; $D109 = 'V' in bank 63
+    cmp #'V'
+    beq @Found
+    dey
+    bne @Inner
     dex
-    bne @Loop
-@Done:
+    bne @Outer
+    sec
+    rts
+@Found:
+    lda #VERA_DCSEL0
+    sta VERA_CTRL_REG
+    clc
     rts
 
 PBI_CLEAR_SCREEN:
@@ -445,6 +476,7 @@ HostNoXE:
 HAS_XE_BANK:
     php
     sei
+    inc CRITIC                  ; block deferred VBI while PORTB is changed
     lda PORTB
     sta TMP0
     lda $4000
@@ -474,6 +506,7 @@ HAS_XE_BANK:
     sta $4000
     lda TMP0
     sta PORTB
+    dec CRITIC
     plp
     sec
     rts
@@ -482,6 +515,7 @@ HAS_XE_BANK:
     sta $4000
     lda TMP0
     sta PORTB
+    dec CRITIC
     plp
     clc
     rts
@@ -491,8 +525,7 @@ NONEED:
     sta CRITIC
     ldy #1
     sec
-    sta PBI_LATCH ; $D1FF -> 0 Reenable the Math Pack when exiting
-    rts
+    rts                         ; the OS deselects the card ($D1FF) after the call
 
 VersionPrefix:
     .asciiz "VERA MODULE FW:"

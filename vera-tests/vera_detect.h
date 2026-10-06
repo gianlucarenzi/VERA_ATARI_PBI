@@ -13,27 +13,30 @@
 /*
  * vera_detect() — probe the VeraX16 PBI video card at $D100.
  *
- * Uses the same write-read-back pattern as WAIT_VERA in the PBI handler ROM:
- * two distinct sentinel values are written to VERA_ADDR_L and verified to
- * rule out stale bus-capacitance false positives.
+ * Selects DCSEL=63 (CTRL=$7E) and checks the identity bytes: $D109 = 'V',
+ * $D10A = 47.  Unlike a write/read-back probe this cannot be fooled by an
+ * undriven bus echoing the last written value (the written $7E never equals
+ * 'V').  CTRL is restored to 0 afterwards.
  *
  * Returns VERA_CARD_ID (0x5658, 'VX') when the card responds correctly,
- * 0 when the register does not hold the written value (card absent or
- * emulator not started with -verax16).
+ * 0 otherwise (card absent, still configuring, or emulator not started
+ * with -verax16).
  */
 static unsigned int vera_detect(void)
 {
-    volatile unsigned char * const addr_l = (volatile unsigned char *)0xD100;
+    volatile unsigned char * const ctrl = (volatile unsigned char *)0xD105;
+    unsigned char v, m;
 
-    *addr_l = 0x2A;
-    if (*addr_l != 0x2A) return 0;
-    *addr_l = 0xD5;
-    if (*addr_l != 0xD5) return 0;
+    *ctrl = 0x7E;
+    v = *(volatile unsigned char *)0xD109;
+    m = *(volatile unsigned char *)0xD10A;
+    *ctrl = 0x00;
+    if (v != 'V' || m != 47) return 0;
 
     /* Restore VRAM address registers to a safe state */
-    *addr_l                              = 0x00;
-    *(volatile unsigned char *)0xD101    = 0x00;
-    *(volatile unsigned char *)0xD102    = 0x00;
+    *(volatile unsigned char *)0xD100 = 0x00;
+    *(volatile unsigned char *)0xD101 = 0x00;
+    *(volatile unsigned char *)0xD102 = 0x00;
 
     return VERA_CARD_ID;
 }
