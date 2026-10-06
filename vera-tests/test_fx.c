@@ -459,6 +459,9 @@ static void run_benchmarks(void)
 {
     unsigned int i;
     unsigned int ticks;
+    unsigned int ticks_fill_inc1;
+    unsigned int ticks_copy_inc1;
+    unsigned int sp;
     unsigned char val;
 
     printf("\nBenchmarks (Size: %u KB)\n", BENCH_SIZE / 1024);
@@ -471,6 +474,7 @@ static void run_benchmarks(void)
         VERA_DATA0 = 0x55;
     }
     ticks = end_timer();
+    ticks_fill_inc1 = ticks;
     printf("Fill (INC1): %3u ticks\n", ticks);
 
     /* 2. Optimized: FX Cache fill (INC4, 4 bytes per write) */
@@ -484,8 +488,8 @@ static void run_benchmarks(void)
         VERA_DATA0 = 0x00;
     }
     ticks = end_timer();
-    printf("Fill (FX 4): %3u ticks (Speedup: %u.%ux)\n", 
-           ticks, (BENCH_SIZE/4 > 0) ? (end_timer() > 0 ? (BENCH_SIZE / (ticks * 64)) : 0) : 0, 0); // Simplified speedup display
+    sp = (ticks > 0) ? (unsigned int)((ticks_fill_inc1 * 10u) / ticks) : 0;
+    printf("Fill (FX 4): %3u ticks (Speedup: %u.%ux)\n", ticks, sp / 10, sp % 10);
     
     /* 3. Baseline Copy: Byte-by-byte (DATA0 -> DATA1, INC1) */
     VERA_CTRL  = DCSEL_2; VERA_REG09 = 0x00;
@@ -499,6 +503,7 @@ static void run_benchmarks(void)
         VERA_DATA1 = VERA_DATA0;
     }
     ticks = end_timer();
+    ticks_copy_inc1 = ticks;
     printf("Copy (INC1): %3u ticks\n", ticks);
 
     /* 4. FX Cache Copy: (4x DATA0 -> 1x DATA1, INC4, 4 bytes per transfer) */
@@ -518,7 +523,8 @@ static void run_benchmarks(void)
         VERA_DATA1 = 0;
     }
     ticks = end_timer();
-    printf("Copy (FX 4): %3u ticks\n", ticks);
+    sp = (ticks > 0) ? (unsigned int)((ticks_copy_inc1 * 10u) / ticks) : 0;
+    printf("Copy (FX 4): %3u ticks (Speedup: %u.%ux)\n", ticks, sp / 10, sp % 10);
 
     VERA_CTRL  = DCSEL_2;
     VERA_REG09 = 0x00;
