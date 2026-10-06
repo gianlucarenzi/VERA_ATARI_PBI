@@ -220,6 +220,8 @@ Tutti i programmi di test in `vera-tests/` includono ora `vera_detect.h` e chiam
 
 Il valore restituito da `vera_require()` (`0x5658`, ovvero i caratteri ASCII `'V','X'`) funge da marker di identità — distinguibile da un semplice booleano e utile per log diagnostici.
 
+Come lanciare ogni test nell'emulatore (opzioni `-verax16-*`, dischi, risultati attesi, risoluzione dei problemi): [`Documentation/EMULATOR-TESTS.it.md`](Documentation/EMULATOR-TESTS.it.md) ([PDF](Documentation/EMULATOR-TESTS.it.pdf)); in inglese [`Documentation/EMULATOR-TESTS.en.md`](Documentation/EMULATOR-TESTS.en.md) ([PDF](Documentation/EMULATOR-TESTS.en.pdf)).
+
 ## Sistema di build (`vera_pbi_rom/Makefile`)
 
 Il build system automatizza la generazione del firmware e dei driver per diverse risoluzioni.
