@@ -453,3 +453,28 @@ lascia la VTOC errata ("0 FREE SECTORS"): è quello che rendeva invisibili `TEST
 `vera-tests/tools/fix_atr_vtoc.py`, che ripara directory e VTOC e fa fallire la build se i file non
 stanno nei 944 settori che la VTOC del DOS 2.0S può descrivere. `disk3-standalone.atr` con `DEMO.VBM`
 occupa 930 settori su 944.
+
+---
+
+## Allineamento dell'emulatore all'HDL 48.0.1 (revisione esterna)
+
+Correzioni in `atari800/src/vera_video.c` e `pbi_verax16.c`, ciascuna verificata sull'HDL
+(`layer_renderer.v`, `composer.v`, `top.v`, `pcm.v`, `spictrl.v`):
+
+| Area | Prima | Ora (come l'HDL) |
+|---|---|---|
+| `Lx_CONFIG` bit 3 | mandava il layer a un renderer "affine" inesistente | è T256C: testo a 256 colori a 1 bpp, bit 7 dell'offset di palette a 2/4/8 bpp e nei bitmap. L'affine helper FX (`ADDR1` mode 3) resta |
+| Bitmap | dati da `MAPBASE`, offset da `TILEBASE & 0x0F`, offset anche a 1 bpp | dati da `TILEBASE[7:2]`, offset da `HSCROLL_H[3:0]`, nessun offset a 1 bpp |
+| Offset di palette | escluso a 8 bpp | pixel 1-15 anche a 8 bpp (tile e bitmap) |
+| `SPI_CTRL` | senza il bit SLOW | `{busy, 0000, autotx, slow, select}` |
+| IRQ di riga in interlaccia | da `DC_VIDEO` bit 3 | da `DC_VIDEO` bit 1 (`video_output_mode[1]`); `DC_VIDEO` vale `$08` dopo il reset |
+| `AUDIO_RATE` / `AUDIO_CTRL` | rilettura del valore trasformato; bit 6 = restart/loop | si rilegge il byte scritto (la riproduzione con x > 128 resta come 256-x); il bit 6 non esiste |
+| `$D1FF` in lettura | bit IRQ su D7 | 0: la scheda reale non può pilotare il solo D7 |
+| ROM PBI mancante | scheda disattivata per sempre | `$D800` non mappata, i registri VERA restano attivi |
+| SPI | busy fino alla riga successiva; la deselezione azzerava `rxdata` | modo veloce completato subito (~0,64 µs), lento alla riga successiva (~20 µs reali); la deselezione non tocca dati né trasferimento |
+
+Nel software: `vbm_init()` azzera `L0_HSCROLL_H`, che sulla VERA reale è l'offset di palette del
+bitmap. Verifiche in emulatore dopo le correzioni: `TESTFX` 36/0, `TESTIRQ` 13/0, `TEST8`,
+`TESTGS8`, `TESTMAZ8`, `TESTMTX8` invariati, splash del player identico pixel per pixel. Non
+esercitati da nessun programma: T256C, bitmap con offset di palette, interlaccia, SPI/SD.
+

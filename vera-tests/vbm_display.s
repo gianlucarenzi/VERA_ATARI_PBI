@@ -72,6 +72,8 @@ _vbm_init:
     sta VERA_L0_CONFIG
     lda #VERA_L0_TILEBASE_320
     sta VERA_L0_TILEBASE
+    lda #0                          ; bitmap mode: HSCROLL_H[3:0] is the palette
+    sta VERA_L0_HSCR_H              ; offset of pixels 1-15, force it to 0
 
     lda #VERA_SCALE_320X240
     sta VERA_DC_HSCALE
