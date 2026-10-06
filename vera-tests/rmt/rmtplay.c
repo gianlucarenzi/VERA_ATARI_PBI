@@ -1,5 +1,6 @@
-/* rmtplay.c — RMT player with a visualizer on the Atari screen (ANTIC),
- * in the style of the XEX/SAP export of Raster Music Tracker.
+/* rmtplay.c — RMT player with a visualizer in the style of the XEX/SAP
+ * export of Raster Music Tracker, shown at the same time on the Atari screen
+ * (ANTIC) and on the VERA screen.
  *
  *   NAME / AUTHOR / DATE of the song (tools/rmtinfo.py: text stored in the
  *   .rmt file, or RMT_NAME= RMT_AUTHOR= RMT_DATE= on the make line)
@@ -11,6 +12,13 @@
  *   SPACE  pause / play          R  restart the song
  *   1 POKEY   2 VERA   3 both    4  hybrid (RMT8: POKEY 1-4, VERA 5-8)
  *   S  VERA stereo on/off        ESC  stop and exit
+ *
+ * VERA screen: layer 1, 40x30 text (320x240) in 1bpp tiles with 256-colour
+ * foreground (T256C). The Atari font goes into VRAM (with inverse copies in
+ * 128-255 and the bar glyphs), the same screen codes are written to both
+ * screens; the bar rows get a red..green colour each. Map at $00000 and font
+ * at $01000, away from the PBI ROM screen ($1B000/$1F000): on exit the layer
+ * registers are put back and the ROM screen shows again.
  *
  * Sound: the same player as TESTRMT (rmtplayr.s + rmtvbi.s + psgrmt.s, POKEY
  * and/or VERA PSG). Standalone: does not need VERA.SYS.
@@ -38,6 +46,40 @@ extern const unsigned char rmt_song_end[];
 extern void rmt_dli(void);
 extern unsigned char rmt_dli_pf0[];
 extern unsigned char rmt_dli_count, rmt_dli_idx;
+
+/* ---- VERA ----------------------------------------------------------------- */
+
+#define VREG(n)         (*(volatile unsigned char *)(0xD100 + (n)))
+#define VERA_ADDR_L     VREG(0x00)
+#define VERA_ADDR_M     VREG(0x01)
+#define VERA_ADDR_H     VREG(0x02)
+#define VERA_DATA0      VREG(0x03)
+#define VERA_CTRL       VREG(0x05)
+#define VERA_DC_VIDEO   VREG(0x09)
+#define VERA_DC_HSCALE  VREG(0x0A)
+#define VERA_DC_VSCALE  VREG(0x0B)
+#define VERA_DC_BORDER  VREG(0x0C)
+#define VERA_L1_FIRST   0x14            /* CONFIG MAPBASE TILEBASE HSCROLL VSCROLL */
+#define VERA_L1_COUNT   7
+#define PBI_SELECT      (*(volatile unsigned char *)0xD1FF)
+
+#define VERA_INC1       0x10
+#define VERA_INC2       0x20
+
+#define VMAP            0x0000u         /* 64x32 map, 128 bytes per row */
+#define VFONT           0x1000u         /* 256 glyphs of 8 bytes */
+#define VPAL_BANK       1               /* palette at $1FA00 */
+#define VPAL            0xFA00u
+#define V_ROW_OFS       3               /* 24 ANTIC rows centred in 30 */
+
+#define L1_CONFIG_VAL   0x18            /* map 64x32, T256C, 1bpp tiles */
+#define L1_MAPBASE_VAL  (VMAP >> 9)
+#define L1_TILEBASE_VAL ((VFONT >> 11) << 2)   /* 8x8 tiles */
+
+/* palette entries used (default palette 0 = black stays the background) */
+#define COL_TEXT        0x21
+#define COL_HEAD        0x22
+#define COL_BAR         0x28            /* + bar row, 0 = top */
 
 /* ---- screen layout ---------------------------------------------------- */
 
@@ -78,7 +120,27 @@ static const char hexdig[] = "0123456789ABCDEF";
 
 static unsigned char *scr;
 static unsigned char fontbuf[2048];         /* 1 KB font, aligned inside */
+static unsigned char *font;                 /* ANTIC font (CHBAS) */
 static unsigned char bar_px[RMT_TRACKS];    /* height shown, with fall-off */
+static unsigned char bar_shown[RMT_TRACKS]; /* height drawn on screen */
+static unsigned char line_buf[40];
+static unsigned char vera_saved[4 + VERA_L1_COUNT];
+
+/* value shown in each field: a field is written again only when it changes
+ * (VERA writes cost CPU time; $FFFF = not drawn yet) */
+enum {
+    F_AUDF = 0, F_AUDC = 8, F_CTL = 16, F_LINE = 18, F_LINES, F_ROW, F_ROWS,
+    F_SPEED, F_SEC, F_MODE, F_STEREO, F_PAUSE, F_COUNT
+};
+static unsigned int shown[F_COUNT];
+
+static unsigned char changed(unsigned char f, unsigned int v)
+{
+    if (shown[f] == v)
+        return 0;
+    shown[f] = v;
+    return 1;
+}
 static unsigned char song_shift;            /* bytes per song line: 1 << shift */
 static const unsigned char *song_start;
 static unsigned int song_lines;
@@ -94,14 +156,45 @@ static unsigned char screen_code(unsigned char c)
     return c;
 }
 
+static void vera_seek(unsigned char bank, unsigned int addr, unsigned char inc)
+{
+    VERA_ADDR_L = (unsigned char)addr;
+    VERA_ADDR_M = (unsigned char)(addr >> 8);
+    VERA_ADDR_H = inc | bank;
+}
+
+/* Every screen write goes through these two: the same screen codes on the
+ * ANTIC screen and in the VERA map (characters only, step 2: the colours of
+ * the map are set once). */
+static void put_codes(unsigned char x, unsigned char y, const unsigned char *c, unsigned char n)
+{
+    unsigned char i;
+
+    memcpy(scr + y * 40 + x, c, n);
+    vera_seek(0, VMAP + (y + V_ROW_OFS) * 128 + x * 2, VERA_INC2);
+    for (i = 0; i < n; i++)
+        VERA_DATA0 = c[i];
+}
+
+static void fill_codes(unsigned char x, unsigned char y, unsigned char c, unsigned char n)
+{
+    unsigned char i;
+
+    memset(scr + y * 40 + x, c, n);
+    vera_seek(0, VMAP + (y + V_ROW_OFS) * 128 + x * 2, VERA_INC2);
+    for (i = 0; i < n; i++)
+        VERA_DATA0 = c;
+}
+
 static void put_text(unsigned char x, unsigned char y, const char *s, unsigned char inv)
 {
-    unsigned char *p = scr + y * 40 + x;
+    unsigned char n = 0;
 
-    while (*s && x < 40) {
-        *p++ = screen_code((unsigned char)*s++) | inv;
-        x++;
+    while (s[n] && x + n < 40) {
+        line_buf[n] = screen_code((unsigned char)s[n]) | inv;
+        n++;
     }
+    put_codes(x, y, line_buf, n);
 }
 
 static void put_center(unsigned char y, const char *s)
@@ -113,29 +206,29 @@ static void put_center(unsigned char y, const char *s)
 
 static void put_hex(unsigned char x, unsigned char y, unsigned char v)
 {
-    unsigned char *p = scr + y * 40 + x;
-
-    p[0] = screen_code(hexdig[v >> 4]);
-    p[1] = screen_code(hexdig[v & 15]);
+    line_buf[0] = screen_code(hexdig[v >> 4]);
+    line_buf[1] = screen_code(hexdig[v & 15]);
+    put_codes(x, y, line_buf, 2);
 }
 
 static void put_dec(unsigned char x, unsigned char y, unsigned int v, unsigned char digits)
 {
-    unsigned char *p = scr + y * 40 + x + digits;
+    unsigned char i = digits;
 
-    while (digits--) {
-        *--p = screen_code('0' + v % 10);
+    while (i--) {
+        line_buf[i] = screen_code('0' + v % 10);
         v /= 10;
     }
+    put_codes(x, y, line_buf, digits);
 }
 
 /* ---- font with the bar glyphs ----------------------------------------- */
 
 static void make_font(void)
 {
-    unsigned char *font = (unsigned char *)(((unsigned int)fontbuf + 1023) & 0xFC00);
     unsigned char h, r, b;
 
+    font = (unsigned char *)(((unsigned int)fontbuf + 1023) & 0xFC00);
     memcpy(font, (void *)0xE000, 1024);
     /* glyph h (1..8), drawn in ANTIC mode 4 (4 pixels of 2 bits per byte):
      * the bottom h pixel rows lit, as LED segments of 3 lit rows and 1 dark
@@ -147,6 +240,93 @@ static void make_font(void)
             font[(GLYPH_BASE + h) * 8 + r] = (b < h && (b & 3) != 3) ? 0x54 : 0x00;
         }
     OS.chbas = (unsigned int)font >> 8;
+}
+
+/* ---- VERA screen -------------------------------------------------------- */
+
+static void vera_color(unsigned char idx, unsigned char r, unsigned char g, unsigned char b)
+{
+    vera_seek(VPAL_BANK, VPAL + idx * 2, VERA_INC1);
+    VERA_DATA0 = (unsigned char)((g << 4) | b);
+    VERA_DATA0 = r;
+}
+
+/* red at the top, yellow in the middle, green at the bottom (4-bit RGB) */
+static const unsigned char bar_rgb[BAR_ROWS][3] = {
+    { 15, 2, 2 }, { 15, 6, 0 }, { 15, 10, 0 }, { 15, 14, 0 },
+    { 11, 15, 0 }, { 7, 14, 0 }, { 3, 13, 0 }, { 0, 12, 0 }
+};
+
+static void vera_screen_on(void)
+{
+    unsigned int i;
+    unsigned char c, r, b, attr;
+
+    PBI_SELECT = 0x80;
+    VERA_CTRL = 0;
+    vera_saved[0] = VERA_DC_VIDEO;
+    vera_saved[1] = VERA_DC_HSCALE;
+    vera_saved[2] = VERA_DC_VSCALE;
+    vera_saved[3] = VERA_DC_BORDER;
+    for (c = 0; c < VERA_L1_COUNT; c++)
+        vera_saved[4 + c] = VREG(VERA_L1_FIRST + c);
+
+    /* font: the ANTIC one (bar glyphs redrawn for 1bpp), then inverse copies */
+    vera_seek(0, VFONT, VERA_INC1);
+    for (i = 0; i < 1024; i++) {
+        c = font[i];
+        if (i >= (GLYPH_BASE + 1) * 8 && i < (GLYPH_BASE + 9) * 8) {
+            /* same LED segments as the ANTIC glyphs: 6 pixels lit, 2 dark */
+            r = (unsigned char)(i & 7);
+            b = 7 - r;
+            c = ((b < (i >> 3) - GLYPH_BASE) && (b & 3) != 3) ? 0xFC : 0x00;
+        }
+        VERA_DATA0 = c;
+    }
+    for (i = 0; i < 1024; i++)
+        VERA_DATA0 = (unsigned char)~font[i];
+
+    vera_color(COL_TEXT, 12, 12, 12);
+    vera_color(COL_HEAD, 6, 10, 15);
+    for (r = 0; r < BAR_ROWS; r++)
+        vera_color(COL_BAR + r, bar_rgb[r][0], bar_rgb[r][1], bar_rgb[r][2]);
+
+    /* map: blank, with the colour of each row */
+    vera_seek(0, VMAP, VERA_INC1);
+    for (r = 0; r < 32; r++) {
+        attr = COL_TEXT;
+        if (r == ROW_TITLE + V_ROW_OFS)
+            attr = COL_HEAD;
+        else if (r >= BAR_TOP + V_ROW_OFS && r < BAR_TOP + BAR_ROWS + V_ROW_OFS)
+            attr = COL_BAR + (r - BAR_TOP - V_ROW_OFS);
+        for (c = 0; c < 64; c++) {
+            VERA_DATA0 = 0;
+            VERA_DATA0 = attr;
+        }
+    }
+
+    VREG(VERA_L1_FIRST + 0) = L1_CONFIG_VAL;
+    VREG(VERA_L1_FIRST + 1) = L1_MAPBASE_VAL;
+    VREG(VERA_L1_FIRST + 2) = L1_TILEBASE_VAL;
+    for (c = 3; c < VERA_L1_COUNT; c++)
+        VREG(VERA_L1_FIRST + c) = 0;        /* no scroll */
+    VERA_DC_HSCALE = 64;                    /* 320x240 */
+    VERA_DC_VSCALE = 64;
+    VERA_DC_BORDER = 0;
+    VERA_DC_VIDEO = (vera_saved[0] & 0x0F) | 0x20;   /* layer 1 only */
+}
+
+static void vera_screen_off(void)
+{
+    unsigned char c;
+
+    VERA_CTRL = 0;
+    VERA_DC_VIDEO = vera_saved[0];
+    VERA_DC_HSCALE = vera_saved[1];
+    VERA_DC_VSCALE = vera_saved[2];
+    VERA_DC_BORDER = vera_saved[3];
+    for (c = 0; c < VERA_L1_COUNT; c++)
+        VREG(VERA_L1_FIRST + c) = vera_saved[4 + c];
 }
 
 /* ---- DLI colours on the bar rows --------------------------------------- */
@@ -222,10 +402,12 @@ static void draw_static(void)
     for (i = 0; i < RMT_TRACKS; i++) {
         x = BAR_X0 + i * BAR_STEP + (BAR_W - 2) / 2;
 #if RMT_TRACKS > 4
-        scr[ROW_LABELS * 40 + x] = screen_code(i < 4 ? 'L' : 'R');
-        scr[ROW_LABELS * 40 + x + 1] = screen_code('1' + (i & 3));
+        line_buf[0] = screen_code(i < 4 ? 'L' : 'R');
+        line_buf[1] = screen_code('1' + (i & 3));
+        put_codes(x, ROW_LABELS, line_buf, 2);
 #else
-        scr[ROW_LABELS * 40 + x + 1] = screen_code('1' + i);
+        line_buf[0] = screen_code('1' + i);
+        put_codes(x + 1, ROW_LABELS, line_buf, 1);
 #endif
     }
 
@@ -246,8 +428,7 @@ static void draw_static(void)
 
 static void draw_bars(unsigned char paused)
 {
-    unsigned char i, r, x, w, h, g, target;
-    unsigned char *p;
+    unsigned char i, r, x, h, g, target;
 
     for (i = 0; i < RMT_TRACKS; i++) {
         target = paused ? 0 : (unsigned char)((rmt_chan_audc[i] & 0x0F) << 2);
@@ -257,14 +438,15 @@ static void draw_bars(unsigned char paused)
             bar_px[i] -= (bar_px[i] - target > 2) ? 2 : bar_px[i] - target;
 
         h = bar_px[i];
+        if (h == bar_shown[i])
+            continue;       /* VERA writes are slow: only bars that moved */
+        bar_shown[i] = h;
         x = BAR_X0 + i * BAR_STEP;
         for (r = 0; r < BAR_ROWS; r++) {
             /* r = 0 is the bottom row */
             g = h > r * 8 ? (h - r * 8 > 8 ? 8 : h - r * 8) : 0;
             g = g ? GLYPH_BASE + g : 0;
-            p = scr + (BAR_TOP + BAR_ROWS - 1 - r) * 40 + x;
-            for (w = 0; w < BAR_W; w++)
-                p[w] = g;
+            fill_codes(x, BAR_TOP + BAR_ROWS - 1 - r, g, BAR_W);
         }
     }
 }
@@ -279,12 +461,16 @@ static void draw_regs(void)
         if (i >= 4)
             x += 2;     /* gap between left and right POKEY */
 #endif
-        put_hex(x, ROW_AUDF, rmt_chan_audf[i]);
-        put_hex(x, ROW_AUDC, rmt_chan_audc[i]);
+        if (changed(F_AUDF + i, rmt_chan_audf[i]))
+            put_hex(x, ROW_AUDF, rmt_chan_audf[i]);
+        if (changed(F_AUDC + i, rmt_chan_audc[i]))
+            put_hex(x, ROW_AUDC, rmt_chan_audc[i]);
     }
-    put_hex(7, ROW_AUDCTL, rmt_audctl);
+    if (changed(F_CTL, rmt_audctl))
+        put_hex(7, ROW_AUDCTL, rmt_audctl);
 #if RMT_TRACKS > 4
-    put_hex(10, ROW_AUDCTL, rmt_audctl2);
+    if (changed(F_CTL + 1, rmt_audctl2))
+        put_hex(10, ROW_AUDCTL, rmt_audctl2);
 #endif
 }
 
@@ -301,11 +487,16 @@ static void draw_position(void)
     line = (unsigned int)(a - song_start) >> song_shift;
     line = line ? line - 1 : 0;     /* p_song already points to the next line */
 
-    put_hex(5, ROW_POS, (unsigned char)line);
-    put_hex(8, ROW_POS, (unsigned char)(song_lines - 1));
-    put_hex(18, ROW_POS, rmt_abeat);
-    put_hex(21, ROW_POS, (unsigned char)(rmt_maxtracklen - 1));
-    put_hex(32, ROW_POS, rmt_speed);
+    if (changed(F_LINE, (unsigned char)line))
+        put_hex(5, ROW_POS, (unsigned char)line);
+    if (changed(F_LINES, (unsigned char)(song_lines - 1)))
+        put_hex(8, ROW_POS, (unsigned char)(song_lines - 1));
+    if (changed(F_ROW, rmt_abeat))
+        put_hex(18, ROW_POS, rmt_abeat);
+    if (changed(F_ROWS, (unsigned char)(rmt_maxtracklen - 1)))
+        put_hex(21, ROW_POS, (unsigned char)(rmt_maxtracklen - 1));
+    if (changed(F_SPEED, rmt_speed))
+        put_hex(32, ROW_POS, rmt_speed);
 }
 
 static void draw_state(unsigned long frames, unsigned char fps, unsigned char mode,
@@ -313,11 +504,16 @@ static void draw_state(unsigned long frames, unsigned char fps, unsigned char mo
 {
     unsigned int s = (unsigned int)(frames / fps);
 
-    put_dec(5, ROW_STATE, s / 60, 2);
-    put_dec(8, ROW_STATE, s % 60, 2);
-    put_text(18, ROW_STATE, mode_name[mode], 0);
-    put_text(25, ROW_STATE, psg_stereo ? "STEREO" : "      ", 0);
-    put_text(33, ROW_STATE, paused ? "PAUSED" : "      ", 0x80 * paused);
+    if (changed(F_SEC, s)) {
+        put_dec(5, ROW_STATE, s / 60, 2);
+        put_dec(8, ROW_STATE, s % 60, 2);
+    }
+    if (changed(F_MODE, mode))
+        put_text(18, ROW_STATE, mode_name[mode], 0);
+    if (changed(F_STEREO, psg_stereo))
+        put_text(25, ROW_STATE, psg_stereo ? "STEREO" : "      ", 0);
+    if (changed(F_PAUSE, paused))
+        put_text(33, ROW_STATE, paused ? "PAUSED" : "      ", 0x80 * paused);
 }
 
 static void set_mode(unsigned char mode)
@@ -356,7 +552,9 @@ int main(void)
     OS.color1 = 0x0C;
     OS.color2 = 0x00;
     OS.color4 = 0x00;
+    memset(shown, 0xFF, sizeof shown);
     make_font();
+    vera_screen_on();
     draw_static();
 
     psg_init();
@@ -414,6 +612,7 @@ int main(void)
 
     rmt_vbi_off();
     dli_off();
+    vera_screen_off();
     OS.chbas = old_chbas;
     OS.color1 = old_color1;
     OS.color2 = old_color2;
