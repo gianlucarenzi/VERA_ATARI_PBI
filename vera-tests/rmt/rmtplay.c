@@ -20,6 +20,10 @@
  * at $01000, away from the PBI ROM screen ($1B000/$1F000): on exit the layer
  * registers are put back and the ROM screen shows again.
  *
+ * Build option RMT_SCREEN (Makefile) chooses the screens: RMTPLAY_ANTIC and
+ * RMTPLAY_VERA, both 1 by default. With VERA only the ANTIC display DMA is
+ * turned off (black Atari screen, more CPU time for the player).
+ *
  * Sound: the same player as TESTRMT (rmtplayr.s + rmtvbi.s + psgrmt.s, POKEY
  * and/or VERA PSG). Standalone: does not need VERA.SYS.
  */
@@ -46,6 +50,16 @@ extern const unsigned char rmt_song_end[];
 extern void rmt_dli(void);
 extern unsigned char rmt_dli_pf0[];
 extern unsigned char rmt_dli_count, rmt_dli_idx;
+
+#ifndef RMTPLAY_ANTIC
+#define RMTPLAY_ANTIC 1
+#endif
+#ifndef RMTPLAY_VERA
+#define RMTPLAY_VERA 1
+#endif
+#if !RMTPLAY_ANTIC && !RMTPLAY_VERA
+#error "RMTPLAY needs at least one screen (RMTPLAY_ANTIC or RMTPLAY_VERA)"
+#endif
 
 /* ---- VERA ----------------------------------------------------------------- */
 
@@ -124,7 +138,9 @@ static unsigned char *font;                 /* ANTIC font (CHBAS) */
 static unsigned char bar_px[RMT_TRACKS];    /* height shown, with fall-off */
 static unsigned char bar_shown[RMT_TRACKS]; /* height drawn on screen */
 static unsigned char line_buf[40];
+#if RMTPLAY_VERA
 static unsigned char vera_saved[4 + VERA_L1_COUNT];
+#endif
 
 /* value shown in each field: a field is written again only when it changes
  * (VERA writes cost CPU time; $FFFF = not drawn yet) */
@@ -156,6 +172,7 @@ static unsigned char screen_code(unsigned char c)
     return c;
 }
 
+#if RMTPLAY_VERA
 static void vera_seek(unsigned char bank, unsigned int addr, unsigned char inc)
 {
     VERA_ADDR_L = (unsigned char)addr;
@@ -163,27 +180,41 @@ static void vera_seek(unsigned char bank, unsigned int addr, unsigned char inc)
     VERA_ADDR_H = inc | bank;
 }
 
+#endif
+
 /* Every screen write goes through these two: the same screen codes on the
  * ANTIC screen and in the VERA map (characters only, step 2: the colours of
  * the map are set once). */
 static void put_codes(unsigned char x, unsigned char y, const unsigned char *c, unsigned char n)
 {
-    unsigned char i;
-
+#if RMTPLAY_ANTIC
     memcpy(scr + y * 40 + x, c, n);
-    vera_seek(0, VMAP + (y + V_ROW_OFS) * 128 + x * 2, VERA_INC2);
-    for (i = 0; i < n; i++)
-        VERA_DATA0 = c[i];
+#endif
+#if RMTPLAY_VERA
+    {
+        unsigned char i;
+
+        vera_seek(0, VMAP + (y + V_ROW_OFS) * 128 + x * 2, VERA_INC2);
+        for (i = 0; i < n; i++)
+            VERA_DATA0 = c[i];
+    }
+#endif
 }
 
 static void fill_codes(unsigned char x, unsigned char y, unsigned char c, unsigned char n)
 {
-    unsigned char i;
-
+#if RMTPLAY_ANTIC
     memset(scr + y * 40 + x, c, n);
-    vera_seek(0, VMAP + (y + V_ROW_OFS) * 128 + x * 2, VERA_INC2);
-    for (i = 0; i < n; i++)
-        VERA_DATA0 = c;
+#endif
+#if RMTPLAY_VERA
+    {
+        unsigned char i;
+
+        vera_seek(0, VMAP + (y + V_ROW_OFS) * 128 + x * 2, VERA_INC2);
+        for (i = 0; i < n; i++)
+            VERA_DATA0 = c;
+    }
+#endif
 }
 
 static void put_text(unsigned char x, unsigned char y, const char *s, unsigned char inv)
@@ -239,11 +270,14 @@ static void make_font(void)
             b = 7 - r;      /* pixel row counted from the bottom */
             font[(GLYPH_BASE + h) * 8 + r] = (b < h && (b & 3) != 3) ? 0x54 : 0x00;
         }
+#if RMTPLAY_ANTIC
     OS.chbas = (unsigned int)font >> 8;
+#endif
 }
 
 /* ---- VERA screen -------------------------------------------------------- */
 
+#if RMTPLAY_VERA
 static void vera_color(unsigned char idx, unsigned char r, unsigned char g, unsigned char b)
 {
     vera_seek(VPAL_BANK, VPAL + idx * 2, VERA_INC1);
@@ -329,8 +363,11 @@ static void vera_screen_off(void)
         VREG(VERA_L1_FIRST + c) = vera_saved[4 + c];
 }
 
+#endif
+
 /* ---- DLI colours on the bar rows --------------------------------------- */
 
+#if RMTPLAY_ANTIC
 static unsigned char *dl_line(unsigned char row)
 {
     unsigned char *dl = (unsigned char *)OS.sdlst;
@@ -376,6 +413,8 @@ static void dli_off(void)
     for (i = BAR_TOP; i < BAR_TOP + BAR_ROWS; i++)
         *dl_line(i) = 0x02;     /* back to the OS text mode */
 }
+
+#endif
 
 /* ---- static parts of the screen ---------------------------------------- */
 
@@ -533,6 +572,7 @@ int main(void)
     unsigned char tick, last, k;
     unsigned char old_color1 = OS.color1, old_color2 = OS.color2, old_color4 = OS.color4;
     unsigned char old_chbas = OS.chbas;
+    unsigned char old_sdmctl = OS.sdmctl;
     unsigned long frames = 0;
 
     clrscr();
@@ -553,15 +593,22 @@ int main(void)
     OS.color2 = 0x00;
     OS.color4 = 0x00;
     memset(shown, 0xFF, sizeof shown);
-    make_font();
+    make_font();            /* the VERA font is made from it too */
+#if RMTPLAY_VERA
     vera_screen_on();
+#endif
+#if !RMTPLAY_ANTIC
+    OS.sdmctl = 0;          /* VERA only: no ANTIC display DMA */
+#endif
     draw_static();
 
     psg_init();
     set_mode(mode);
     rmt_init(rmt_song);
     rmt_vbi_on();
+#if RMTPLAY_ANTIC
     dli_on();
+#endif
 
     last = OS.rtclok[2];
     for (;;) {
@@ -611,8 +658,13 @@ int main(void)
     }
 
     rmt_vbi_off();
+#if RMTPLAY_ANTIC
     dli_off();
+#endif
+#if RMTPLAY_VERA
     vera_screen_off();
+#endif
+    OS.sdmctl = old_sdmctl;
     OS.chbas = old_chbas;
     OS.color1 = old_color1;
     OS.color2 = old_color2;

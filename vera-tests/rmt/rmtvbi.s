@@ -116,8 +116,10 @@ _rmt_vbi_on:
         sta oldvbi+1
         lda VVBLKD
         sta oldvbd
+        sta vbd_next+1
         lda VVBLKD+1
         sta oldvbd+1
+        sta vbd_next+2
         ldy #<dvbi
         ldx #>dvbi
         lda #7                  ; 7 = deferred VBI vector
@@ -300,6 +302,15 @@ dvbi:
         lda busy                ; a long tick of the previous frame still
         bne @busy               ; running underneath
         jsr run
-        jmp (oldvbd)
+        jmp vbd_next
 @busy:  jsr postpone
-@out:   jmp (oldvbd)
+@out:   jmp vbd_next
+
+; Exit to the previous deferred VBI. A plain JMP whose operand is set by
+; _rmt_vbi_on, not JMP (oldvbd): an indirect jump through a vector at $xxFF
+; reads its high byte from $xx00 on the 6502, and where the linker puts
+; oldvbd depends on the program.
+        .segment "DATA"
+vbd_next:
+        jmp $FFFF
+        .segment "CODE"
