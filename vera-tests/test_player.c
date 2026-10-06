@@ -5,7 +5,7 @@
  * idiom as test_matrix.c). Shows a 4-channel VU meter via Player/Missile
  * graphics + a Display List Interrupt (see vu_pm.s) while playing — this
  * doesn't touch the normal text screen at all, unlike an actual graphics
- * mode switch would. Press any key to stop.
+ * mode switch would. Press any key to stop and exit (one key).
  *
  * Screen: cleared to black background / white text, with the song's
  * TITLE (see vtm_format.md's header field, offset 12) printed centered
@@ -202,10 +202,17 @@ int main(void)
     vtm_stop();
     free(song);
 
+    /* The key that stopped playback is the exit key: consume it and return. */
+    CH_REG = CH_NONE;
+    return rval;
+
 err:
+    /* Only on error: keep the message on screen until a key is pressed. */
+    printf("Press any key...\n");
     CH_REG = CH_NONE;
     while (CH_REG == CH_NONE) {
     }
+    CH_REG = CH_NONE;
 
     return rval;
 }

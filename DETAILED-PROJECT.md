@@ -435,3 +435,20 @@ come nell'HDL.
 l'`INIT` non scrive sul bus e segnala il problema con **tre beep** dall'altoparlante della console
 (`CONSOL` bit 3, ~1 kHz, ~120 ms ciascuno). Un colore sullo schermo ANTIC non funziona: l'OS reimposta
 `COLOR2`/`COLOR4` dopo l'`INIT` PBI (verificato in emulatore con `-verax16-config-ms 5000`).
+
+---
+
+## Immagini disco (`make all`)
+
+| Immagine | Contenuto |
+|---|---|
+| `disk1-runcpm.atr` | DOS 2.0S, `RUNCPM.COM`, `VERA8030.SYS` |
+| `disk2-veratests-{40x30,80x30,80x60}.atr` | DOS 2.0S, test con driver integrato (`TESTn`, `TESTGSn`, `TESTMAZn`, `TESTMTXn`) e il `VERAxxxx.SYS` della risoluzione |
+| `disk3-standalone.atr` | DOS 2.0S, test che non usano il driver: `TESTFX.COM`, `TESTIRQ.COM`, `TESTPLR.COM` + `DEMO.VTM` |
+
+Il DOS 2.0S indirizza solo ~707 settori liberi anche se `dir2atr` crea un'immagine a densità
+estesa: i file oltre il limite vengono scritti ma il DOS non li vede. `check_dos20_capacity.py` conta
+i settori (125 byte di dati ciascuno) prima di ogni `dir2atr` e fa fallire la build se un disco non ci
+sta. Prima di questa divisione `TESTPLR.COM` (dopo l'aggiunta di `TESTIRQ.COM`) e `VERA8030.SYS`
+non erano visibili sui dischi `disk2`.
+

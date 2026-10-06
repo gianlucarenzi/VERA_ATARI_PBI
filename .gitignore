@@ -58,6 +58,7 @@ vera_pbi.atr
 /disk2-veratests-40x30.atr
 /disk2-veratests-80x30.atr
 /disk2-veratests-80x60.atr
+/disk3-standalone.atr
 /vera-tests/test_font.o
 /vera-tests/test_gradient_scroll.o
 /vera-tests/test_maze.o

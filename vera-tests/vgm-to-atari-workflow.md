@@ -299,7 +299,7 @@ test disk (rebuilds `TESTPLR.COM`, `DEMO.VTM` and everything else on that
 disk):
 
 ```sh
-make DEMO_SONG_SRC=path/to/song.vtms disk2-veratests-80x60.atr
+make DEMO_SONG_SRC=path/to/song.vtms disk3-standalone.atr
 ```
 
 ## 7. Boot it

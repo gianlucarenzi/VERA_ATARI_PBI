@@ -225,7 +225,7 @@ Contatori: `_vera_irq_count` (4 byte).
 
 ## 8. Test: `TESTIRQ.COM`
 
-Su tutti i dischi `disk2-veratests-*.atr`, non richiede `VERA.SYS`. Stampa solo i controlli
+Sul disco `disk3-standalone.atr` (test che non richiedono `VERA.SYS`). Stampa solo i controlli
 falliti e il riepilogo.
 
 | Gruppo | Cosa verifica |

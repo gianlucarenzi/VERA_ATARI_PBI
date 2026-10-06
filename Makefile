@@ -83,7 +83,7 @@ BUNDLE_VERA = bundle_vera.py
 .PHONY: all clean cleanall install atr labels drivers clean_objs
 
 # The default target builds the PBI ROM and all three driver versions.
-all: $(TARGET) $(SYS) drivers disk1-runcpm.atr disk2-veratests-40x30.atr disk2-veratests-80x30.atr disk2-veratests-80x60.atr
+all: $(TARGET) $(SYS) drivers disk1-runcpm.atr disk2-veratests-40x30.atr disk2-veratests-80x30.atr disk2-veratests-80x60.atr disk3-standalone.atr
 
 # Rule to generate the three resolution-specific drivers.
 # Each build requires a clean objects pass to ensure correct defines are applied.
@@ -306,28 +306,49 @@ atr: $(TARGET) $(RUNCPM_EXE) $(TEST_FX_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) 
 	@echo "ATR written to $(ATR)"
 	$(call copy_atr_to_fujinet,$(ATR))
 
-disk1-runcpm.atr: $(RUNCPM_EXE) $(SYS8030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
+# DOS 2.0S only addresses ~707 free sectors: fail the build instead of
+# silently producing a disk with invisible files.
+DOS20_CHECK = check_dos20_capacity.py
+
+disk1-runcpm.atr: $(RUNCPM_EXE) $(SYS8030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(DOS20_CHECK)
+	rm -rf .atrbuild/disk1
 	mkdir -p .atrbuild/disk1
 	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(RUNCPM_EXE) $(SYS8030) .atrbuild/disk1/
+	$(PYTHON) $(DOS20_CHECK) .atrbuild/disk1
 	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk1
 	$(call copy_atr_to_fujinet,$@)
 
-disk2-veratests-40x30.atr: TEST4.COM TESTGS4.COM TESTMAZ4.COM TESTMTX4.COM $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS4030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
+disk2-veratests-40x30.atr: TEST4.COM TESTGS4.COM TESTMAZ4.COM TESTMTX4.COM $(SYS4030) $(DOS20_DIR)/DOS.SYS $(DOS20_CHECK) $(DOS20_DIR)/DUP.SYS
+	rm -rf .atrbuild/disk2_4030
 	mkdir -p .atrbuild/disk2_4030
-	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST4.COM TESTGS4.COM TESTMAZ4.COM TESTMTX4.COM $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS4030) .atrbuild/disk2_4030/
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST4.COM TESTGS4.COM TESTMAZ4.COM TESTMTX4.COM $(SYS4030) .atrbuild/disk2_4030/
+	$(PYTHON) $(DOS20_CHECK) .atrbuild/disk2_4030
 	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk2_4030
 	$(call copy_atr_to_fujinet,$@)
 
-disk2-veratests-80x30.atr: TEST8.COM TESTGS8.COM TESTMAZ8.COM TESTMTX8.COM $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS8030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
+disk2-veratests-80x30.atr: TEST8.COM TESTGS8.COM TESTMAZ8.COM TESTMTX8.COM $(SYS8030) $(DOS20_DIR)/DOS.SYS $(DOS20_CHECK) $(DOS20_DIR)/DUP.SYS
+	rm -rf .atrbuild/disk2_8030
 	mkdir -p .atrbuild/disk2_8030
-	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST8.COM TESTGS8.COM TESTMAZ8.COM TESTMTX8.COM $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS8030) .atrbuild/disk2_8030/
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST8.COM TESTGS8.COM TESTMAZ8.COM TESTMTX8.COM $(SYS8030) .atrbuild/disk2_8030/
+	$(PYTHON) $(DOS20_CHECK) .atrbuild/disk2_8030
 	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk2_8030
 	$(call copy_atr_to_fujinet,$@)
 
-disk2-veratests-80x60.atr: TEST6.COM TESTGS6.COM TESTMAZ6.COM TESTMTX6.COM $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS8060) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS
+disk2-veratests-80x60.atr: TEST6.COM TESTGS6.COM TESTMAZ6.COM TESTMTX6.COM $(SYS8060) $(DOS20_DIR)/DOS.SYS $(DOS20_CHECK) $(DOS20_DIR)/DUP.SYS
+	rm -rf .atrbuild/disk2_8060
 	mkdir -p .atrbuild/disk2_8060
-	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST6.COM TESTGS6.COM TESTMAZ6.COM TESTMTX6.COM $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(SYS8060) .atrbuild/disk2_8060/
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST6.COM TESTGS6.COM TESTMAZ6.COM TESTMTX6.COM $(SYS8060) .atrbuild/disk2_8060/
+	$(PYTHON) $(DOS20_CHECK) .atrbuild/disk2_8060
 	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk2_8060
+	$(call copy_atr_to_fujinet,$@)
+
+# Tests that do not need VERA.SYS (same files for every screen mode)
+disk3-standalone.atr: $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(DOS20_CHECK)
+	rm -rf .atrbuild/disk3
+	mkdir -p .atrbuild/disk3
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) .atrbuild/disk3/
+	$(PYTHON) $(DOS20_CHECK) .atrbuild/disk3
+	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk3
 	$(call copy_atr_to_fujinet,$@)
 
 # === Cleanup ================================================================
