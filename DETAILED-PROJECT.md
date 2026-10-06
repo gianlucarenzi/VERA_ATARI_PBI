@@ -410,3 +410,19 @@ Produce `vera_pbi_handler.rom`, `VERA8030.SYS`, `VERA8060.SYS`, `VERA4030.SYS` e
 - **PBI:** Registri VERA a `$D100-$D11F`; ROM PBI a `$D800-$DFFF` (latch `$D1FF`)
 - **Test:** Validare in `vera_pbi_rom/vera-tests/`; usare `-verax16 -verax16-rom vera_pbi_handler.rom`
 - **Commit:** Messaggi in inglese; no `Co-Authored-By`
+
+---
+
+## Interrupt della VERA (`vera-tests/vera_irq.s`, `TESTIRQ.COM`)
+
+Gli IRQ della VERA si gestiscono con un gancio sul vettore IRQ immediato dell'OS (`VIMIRQ`, `$0216`),
+non con il meccanismo PBI (`$D1FF`/`PDIMSK`): sulla scheda reale il transceiver del bus dati non può
+pilotare il solo bit D7. Il gancio legge `ISR & IEN`, conferma VSYNC/LINE/SPRCOL, maschera AFLOW (non
+confermabile) e passa al gestore precedente gli IRQ che non sono della VERA. Interfaccia C in
+`vera_irq.h` (`vera_irq_install`, `vera_irq_enable`, `vera_irq_disable`, `vera_irq_take`,
+`vera_irq_set_line`, `vera_irq_set_callback`, `vera_irq_remove`, contatori `vera_irq_count[4]`).
+
+Guida completa: [`Documentation/VERA-IRQ.md`](Documentation/VERA-IRQ.md). `TESTIRQ.COM`: PASS 13,
+FAIL 0 in emulatore (NTSC e PAL). Per questo test l'emulatore è stato corretto: AFLOW è ora un segnale
+sempre aggiornato (FIFO vuota dopo il reset = 1) e la scrittura di `ISR` cancella solo i bit 2:0,
+come nell'HDL.

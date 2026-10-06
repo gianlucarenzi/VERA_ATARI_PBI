@@ -33,6 +33,7 @@ Un driver rilocabile che si installa nella RAM alta (RAMTOP) e "prende il contro
 ## Strumenti di Test e Diagnostica
 Il progetto include una suite di test avanzata per validare l'implementazione hardware e misurare le prestazioni:
 *   **`TESTFX.COM`:** Un software diagnostico che verifica ogni registro del coprocessore FX e include benchmark per misurare il throughput reale (es. Copy e Fill della VRAM).
+*   **`TESTIRQ.COM`:** Verifica il gancio IRQ della VERA (`vera-tests/vera_irq.s`): VSYNC a 59,94 Hz, IRQ di riga, mascheramento della FIFO audio, catena verso l'OS e rimozione. Come attivare, gestire e disattivare gli interrupt è descritto in [`Documentation/VERA-IRQ.md`](Documentation/VERA-IRQ.md).
 *   **`RUNCPM.COM`:** Un terminale ANSI completo che permette di usare l'Atari con la scheda VERA per accedere a sistemi CP/M remoti via FujiNet.
 *   **Test Funzionali:** Programmi per verificare il caricamento dei font, il rendering di gradienti e la stabilità dello scrolling hardware.
 
