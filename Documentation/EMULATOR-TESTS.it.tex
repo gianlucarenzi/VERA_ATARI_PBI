@@ -1,0 +1,518 @@
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+\PassOptionsToPackage{dvipsnames,svgnames,x11names}{xcolor}
+%
+\documentclass[
+]{article}
+\usepackage{amsmath,amssymb}
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math} % this also loads fontspec
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+\usepackage{lmodern}
+\ifPDFTeX\else
+  % xetex/luatex font selection
+  \setmonofont[Scale=0.85]{DejaVu Sans Mono}
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+\usepackage{xcolor}
+\usepackage[a4paper,margin=2.2cm]{geometry}
+\usepackage{color}
+\usepackage{fancyvrb}
+\newcommand{\VerbBar}{|}
+\newcommand{\VERB}{\Verb[commandchars=\\\{\}]}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{commandchars=\\\{\}}
+% Add ',fontsize=\small' for more characters per line
+\newenvironment{Shaded}{}{}
+\newcommand{\AlertTok}[1]{\textcolor[rgb]{1.00,0.00,0.00}{\textbf{#1}}}
+\newcommand{\AnnotationTok}[1]{\textcolor[rgb]{0.38,0.63,0.69}{\textbf{\textit{#1}}}}
+\newcommand{\AttributeTok}[1]{\textcolor[rgb]{0.49,0.56,0.16}{#1}}
+\newcommand{\BaseNTok}[1]{\textcolor[rgb]{0.25,0.63,0.44}{#1}}
+\newcommand{\BuiltInTok}[1]{\textcolor[rgb]{0.00,0.50,0.00}{#1}}
+\newcommand{\CharTok}[1]{\textcolor[rgb]{0.25,0.44,0.63}{#1}}
+\newcommand{\CommentTok}[1]{\textcolor[rgb]{0.38,0.63,0.69}{\textit{#1}}}
+\newcommand{\CommentVarTok}[1]{\textcolor[rgb]{0.38,0.63,0.69}{\textbf{\textit{#1}}}}
+\newcommand{\ConstantTok}[1]{\textcolor[rgb]{0.53,0.00,0.00}{#1}}
+\newcommand{\ControlFlowTok}[1]{\textcolor[rgb]{0.00,0.44,0.13}{\textbf{#1}}}
+\newcommand{\DataTypeTok}[1]{\textcolor[rgb]{0.56,0.13,0.00}{#1}}
+\newcommand{\DecValTok}[1]{\textcolor[rgb]{0.25,0.63,0.44}{#1}}
+\newcommand{\DocumentationTok}[1]{\textcolor[rgb]{0.73,0.13,0.13}{\textit{#1}}}
+\newcommand{\ErrorTok}[1]{\textcolor[rgb]{1.00,0.00,0.00}{\textbf{#1}}}
+\newcommand{\ExtensionTok}[1]{#1}
+\newcommand{\FloatTok}[1]{\textcolor[rgb]{0.25,0.63,0.44}{#1}}
+\newcommand{\FunctionTok}[1]{\textcolor[rgb]{0.02,0.16,0.49}{#1}}
+\newcommand{\ImportTok}[1]{\textcolor[rgb]{0.00,0.50,0.00}{\textbf{#1}}}
+\newcommand{\InformationTok}[1]{\textcolor[rgb]{0.38,0.63,0.69}{\textbf{\textit{#1}}}}
+\newcommand{\KeywordTok}[1]{\textcolor[rgb]{0.00,0.44,0.13}{\textbf{#1}}}
+\newcommand{\NormalTok}[1]{#1}
+\newcommand{\OperatorTok}[1]{\textcolor[rgb]{0.40,0.40,0.40}{#1}}
+\newcommand{\OtherTok}[1]{\textcolor[rgb]{0.00,0.44,0.13}{#1}}
+\newcommand{\PreprocessorTok}[1]{\textcolor[rgb]{0.74,0.48,0.00}{#1}}
+\newcommand{\RegionMarkerTok}[1]{#1}
+\newcommand{\SpecialCharTok}[1]{\textcolor[rgb]{0.25,0.44,0.63}{#1}}
+\newcommand{\SpecialStringTok}[1]{\textcolor[rgb]{0.73,0.40,0.53}{#1}}
+\newcommand{\StringTok}[1]{\textcolor[rgb]{0.25,0.44,0.63}{#1}}
+\newcommand{\VariableTok}[1]{\textcolor[rgb]{0.10,0.09,0.49}{#1}}
+\newcommand{\VerbatimStringTok}[1]{\textcolor[rgb]{0.25,0.44,0.63}{#1}}
+\newcommand{\WarningTok}[1]{\textcolor[rgb]{0.38,0.63,0.69}{\textbf{\textit{#1}}}}
+\usepackage{longtable,booktabs,array}
+\usepackage{calc} % for calculating minipage widths
+% Correct order of tables after \paragraph or \subparagraph
+\usepackage{etoolbox}
+\makeatletter
+\patchcmd\longtable{\par}{\if@noskipsec\mbox{}\fi\par}{}{}
+\makeatother
+% Allow footnotes in longtable head/foot
+\IfFileExists{footnotehyper.sty}{\usepackage{footnotehyper}}{\usepackage{footnote}}
+\makesavenoteenv{longtable}
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setcounter{secnumdepth}{5}
+\ifLuaTeX
+\usepackage[bidi=basic]{babel}
+\else
+\usepackage[bidi=default]{babel}
+\fi
+\babelprovide[main,import]{italian}
+% get rid of language-specific shorthands (see #6817):
+\let\LanguageShortHands\languageshorthands
+\def\languageshorthands#1{}
+\ifLuaTeX
+  \usepackage{selnolig}  % disable illegal ligatures
+\fi
+\usepackage{bookmark}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\urlstyle{same}
+\hypersetup{
+  pdftitle={VERA X16 per Atari --- Eseguire i test nell'emulatore},
+  pdflang={it},
+  colorlinks=true,
+  linkcolor={blue},
+  filecolor={Maroon},
+  citecolor={Blue},
+  urlcolor={Blue},
+  pdfcreator={LaTeX via pandoc}}
+
+\title{VERA X16 per Atari --- Eseguire i test nell'emulatore}
+\usepackage{etoolbox}
+\makeatletter
+\providecommand{\subtitle}[1]{% add subtitle to \maketitle
+  \apptocmd{\@title}{\par {\large #1 \par}}{}{}
+}
+\makeatother
+\subtitle{Fork di atari800 con la scheda VeraX16 PBI}
+\author{Gianluca Renzi}
+\date{2026-10-06}
+
+\begin{document}
+\maketitle
+
+{
+\hypersetup{linkcolor=}
+\setcounter{tocdepth}{3}
+\tableofcontents
+}
+\section{Panoramica}\label{panoramica}
+
+I programmi di test in \texttt{vera-tests/} girano su un fork
+dell'emulatore \textbf{atari800} (versione 5.2.0) che emula la scheda
+VeraX16 sul bus PBI dell'Atari: registri VERA a \texttt{\$D100-\$D11F},
+ROM handler da 2 KB a \texttt{\$D800-\$DFFF} (selezionata dal latch PBI
+\texttt{\$D1FF}).
+
+L'emulatore si trova accanto a questo repository:
+
+\begin{verbatim}
+~/Progetti/ATARI/
+├── atari800/                 emulatore (src/atari800 è l'eseguibile)
+│   └── vera_pbi_rom -> ../VERA_ATARI_PBI
+└── VERA_ATARI_PBI/           questo repository (ROM, driver, test)
+\end{verbatim}
+
+Tutti i comandi seguenti si eseguono \textbf{dalla radice di questo
+repository} (\texttt{VERA\_ATARI\_PBI}), quindi l'emulatore è
+\texttt{../atari800/src/atari800}. Per brevità:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\VariableTok{EMU}\OperatorTok{=}\NormalTok{../atari800/src/atari800}
+\end{Highlighting}
+\end{Shaded}
+
+\section{Prerequisiti}\label{prerequisiti}
+
+\subsection{Compilare l'emulatore}\label{compilare-lemulatore}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\BuiltInTok{cd}\NormalTok{ ../atari800}
+\ExtensionTok{./autogen.sh}
+\ExtensionTok{./configure} \AttributeTok{{-}{-}enable{-}pbi{-}verax16}
+\FunctionTok{make}
+\BuiltInTok{cd} \AttributeTok{{-}}
+\end{Highlighting}
+\end{Shaded}
+
+L'emulazione della VERA è in \texttt{src/pbi\_verax16.c} (registri, FX,
+audio, SPI) e \texttt{src/vera\_video.c} (rendering). Senza
+\texttt{-\/-enable-pbi-verax16} le opzioni \texttt{-verax16} non
+esistono.
+
+Non serve una ROM del sistema operativo Atari: se
+\texttt{\textasciitilde{}/.atari800.cfg} non ne indica una, atari800 usa
+AltirraOS e Altirra BASIC integrati.
+
+\subsection{Compilare ROM, driver e dischi di
+test}\label{compilare-rom-driver-e-dischi-di-test}
+
+Strumenti richiesti: \texttt{cc65} (\texttt{ca65}, \texttt{ld65},
+\texttt{cl65}), \texttt{dir2atr}, \texttt{python3}.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{make}            \CommentTok{\# ROM, driver VERA*.SYS, programmi di test, immagini disco}
+\end{Highlighting}
+\end{Shaded}
+
+Prodotti principali:
+
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.5000}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.5000}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+File
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Contenuto
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\texttt{vera\_pbi\_handler.rom} & ROM handler PBI, 2 KB (avvio in
+80×60) \\
+\texttt{VERA4030.SYS}, \texttt{VERA8030.SYS}, \texttt{VERA8060.SYS} &
+driver in RAM per 40×30, 80×30, 80×60 \\
+\texttt{disk1-runcpm.atr} & DOS 2.0S, \texttt{RUNCPM.COM},
+\texttt{VERA8030.SYS} \\
+\texttt{disk2-veratests-40x30.atr} & \texttt{TEST4}, \texttt{TESTGS4},
+\texttt{TESTMAZ4}, \texttt{TESTMTX4}, \texttt{TESTRMT},
+\texttt{VERA4030.SYS} \\
+\texttt{disk2-veratests-80x30.atr} & \texttt{TEST8}, \texttt{TESTGS8},
+\texttt{TESTMAZ8}, \texttt{TESTMTX8}, \texttt{TESTRMT},
+\texttt{VERA8030.SYS} \\
+\texttt{disk2-veratests-80x60.atr} & \texttt{TEST6}, \texttt{TESTGS6},
+\texttt{TESTMAZ6}, \texttt{TESTMTX6}, \texttt{TESTRMT},
+\texttt{VERA8060.SYS} \\
+\texttt{disk3-standalone.atr} & \texttt{TESTFX}, \texttt{TESTIRQ},
+\texttt{TESTPLR} + \texttt{DEMO.VTM} (test senza driver) \\
+\texttt{disk4-rmtio.atr} & \texttt{TESTRIO} con autorun MyPicoDos e i
+file di prova \\
+\end{longtable}
+
+I programmi
+\texttt{TESTn}/\texttt{TESTGSn}/\texttt{TESTMAZn}/\texttt{TESTMTXn} dei
+dischi \texttt{disk2} contengono già il driver della loro risoluzione
+(\texttt{n} = 4: 40×30, 8: 80×30, 6: 80×60).
+
+\section{Il comando di base}\label{il-comando-di-base}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\VariableTok{$EMU} \AttributeTok{{-}xl} \AttributeTok{{-}pal} \AttributeTok{{-}nopatch} \AttributeTok{{-}verax16} \AttributeTok{{-}verax16{-}rom}\NormalTok{ vera\_pbi\_handler.rom }\DataTypeTok{\textbackslash{}}
+\NormalTok{     disk3{-}standalone.atr}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{-verax16} inserisce la scheda; \texttt{-verax16-rom} indica la
+  ROM handler.
+\item
+  \texttt{-xl} (800XL) o \texttt{-xe} (130XE): il driver richiede una
+  macchina XL/XE.
+\item
+  \texttt{-pal} o \texttt{-ntsc}: i test devono passare in entrambi.
+\item
+  \texttt{-nopatch}: nessuna patch SIO ad alta velocità, l'I/O su disco
+  va alla velocità seriale reale (il dispositivo H: resta attivo). Per
+  renderlo permanente impostare \texttt{ENABLE\_SIO\_PATCH=0} in
+  \texttt{\textasciitilde{}/.atari800.cfg}.
+\item
+  L'ultimo argomento è il disco in \texttt{D1:}; altri \texttt{.atr}
+  vanno in \texttt{D2:}, \texttt{D3:}\ldots{}
+\end{itemize}
+
+L'emulatore mostra due uscite: lo schermo ANTIC/GTIA normale e lo
+schermo della VERA (VGA 640×480).
+
+\subsection{Avviare un programma dal DOS
+2.0S}\label{avviare-un-programma-dal-dos-2.0s}
+
+I dischi avviano il DOS 2.0S. Dal menu del DUP:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  premere \texttt{L} (BINARY LOAD);
+\item
+  scrivere il nome del file, per esempio \texttt{TESTFX.COM}, e premere
+  Return.
+\end{enumerate}
+
+\subsection{Avviare un programma senza
+disco}\label{avviare-un-programma-senza-disco}
+
+\texttt{-run} carica un eseguibile direttamente dal file system
+dell'host:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\VariableTok{$EMU} \AttributeTok{{-}xl} \AttributeTok{{-}pal} \AttributeTok{{-}nopatch} \AttributeTok{{-}verax16} \AttributeTok{{-}verax16{-}rom}\NormalTok{ vera\_pbi\_handler.rom }\DataTypeTok{\textbackslash{}}
+     \AttributeTok{{-}run}\NormalTok{ TESTIRQ.COM}
+\end{Highlighting}
+\end{Shaded}
+
+\section{Opzioni}\label{opzioni}
+
+\subsection{Opzioni della scheda
+VeraX16}\label{opzioni-della-scheda-verax16}
+
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.5000}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.5000}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Opzione
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Significato
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\texttt{-verax16} & attiva la scheda (alias \texttt{-\/-use-verax16}) \\
+\texttt{-verax16-rom\ F} & ROM handler, 2 KB a \texttt{\$D800-\$DFFF} \\
+\texttt{-verax16-pbi-id\ N} & bit del dispositivo PBI 0-7 (default 7,
+maschera \texttt{\$80}) \\
+\texttt{-verax16-config-ms\ N} & tempo di configurazione dell'FPGA dopo
+l'accensione, bus non pilotato nel frattempo (default 100); \texttt{0} =
+la scheda tiene il RESET dell'Atari fino a CONFIG\_DONE \\
+\texttt{-verax16-debuglevel\ N} & livello di log (default 0) \\
+\texttt{-verax16-psg-volume\ N} & livello del PSG VERA in percento,
+0-400 (default 100 = una voce forte come un canale POKEY a volume 15) \\
+\texttt{-verax16-sdcard\ F} & immagine SD grezza (per esempio da
+\texttt{dd}) esposta tramite la SPI della VERA \\
+\end{longtable}
+
+\subsection{Opzioni utili di atari800}\label{opzioni-utili-di-atari800}
+
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.5000}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.5000}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Opzione
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Uso
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\texttt{-xl}, \texttt{-xe} & macchina 800XL / 130XE \\
+\texttt{-pal}, \texttt{-ntsc} & standard video \\
+\texttt{-basic}, \texttt{-nobasic} & ROM BASIC attiva/disattiva \\
+\texttt{-run\ F} & esegue un file COM/EXE/XEX/BAS \\
+\texttt{-nopatch} & nessuna patch SIO ad alta velocità: temporizzazione
+seriale reale, H: funziona \\
+\texttt{-nopatchall} & nessuna patch all'OS: temporizzazione seriale SIO
+reale (H: non funziona) \\
+\texttt{-volume\ N} & volume di uscita 0-100 \\
+\texttt{-stereo} & due POKEY \\
+\texttt{-turbo} & massima velocità \\
+\texttt{-netsio\ {[}porta{]}} & NetSIO per FujiNet-PC (default UDP
+9997) \\
+\texttt{-config\ F} & file di configurazione alternativo \\
+\end{longtable}
+
+\section{Eseguire i singoli test}\label{eseguire-i-singoli-test}
+
+\subsection{TESTFX --- coprocessore FX}\label{testfx-coprocessore-fx}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\VariableTok{$EMU} \AttributeTok{{-}xl} \AttributeTok{{-}pal} \AttributeTok{{-}nopatch} \AttributeTok{{-}verax16} \AttributeTok{{-}verax16{-}rom}\NormalTok{ vera\_pbi\_handler.rom }\DataTypeTok{\textbackslash{}}
+\NormalTok{     disk3{-}standalone.atr}
+\end{Highlighting}
+\end{Shaded}
+
+Dal DUP: \texttt{L}, \texttt{TESTFX.COM}. Verifica ogni registro FX e
+misura il throughput di copia/riempimento della VRAM. Risultato atteso:
+\textbf{PASS 36, FAIL 0}.
+
+\subsection{TESTIRQ --- interrupt della
+VERA}\label{testirq-interrupt-della-vera}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\VariableTok{$EMU} \AttributeTok{{-}xl} \AttributeTok{{-}pal}  \AttributeTok{{-}nopatch} \AttributeTok{{-}verax16} \AttributeTok{{-}verax16{-}rom}\NormalTok{ vera\_pbi\_handler.rom }\DataTypeTok{\textbackslash{}}
+     \AttributeTok{{-}run}\NormalTok{ TESTIRQ.COM}
+\VariableTok{$EMU} \AttributeTok{{-}xl} \AttributeTok{{-}ntsc} \AttributeTok{{-}nopatch} \AttributeTok{{-}verax16} \AttributeTok{{-}verax16{-}rom}\NormalTok{ vera\_pbi\_handler.rom }\DataTypeTok{\textbackslash{}}
+     \AttributeTok{{-}run}\NormalTok{ TESTIRQ.COM}
+\end{Highlighting}
+\end{Shaded}
+
+Verifica il gancio su \texttt{VIMIRQ}: VSYNC a 59,94 Hz, IRQ di riga,
+mascheramento di AFLOW, catena verso l'OS e rimozione. Risultato atteso:
+\textbf{PASS 13, FAIL 0}, sia in PAL sia in NTSC. Vedi
+\texttt{Documentation/VERA-IRQ.md}.
+
+\subsection{TESTPLR --- player VTM}\label{testplr-player-vtm}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\VariableTok{$EMU} \AttributeTok{{-}xl} \AttributeTok{{-}pal} \AttributeTok{{-}nopatch} \AttributeTok{{-}volume}\NormalTok{ 100 }\AttributeTok{{-}verax16} \AttributeTok{{-}verax16{-}rom}\NormalTok{ vera\_pbi\_handler.rom }\DataTypeTok{\textbackslash{}}
+\NormalTok{     disk3{-}standalone.atr}
+\end{Highlighting}
+\end{Shaded}
+
+Dal DUP: \texttt{L}, \texttt{TESTPLR.COM}. Usare \texttt{-pal} o
+\texttt{-ntsc} secondo la frequenza per cui è stato convertito il brano.
+\texttt{-volume\ 100} serve: il PSG della VERA è basso al livello di
+mixer predefinito (oppure alzare \texttt{-verax16-psg-volume}).
+
+\subsection{TEST / TESTGS / TESTMAZ / TESTMTX --- driver e modi
+video}\label{test-testgs-testmaz-testmtx-driver-e-modi-video}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\VariableTok{$EMU} \AttributeTok{{-}xl} \AttributeTok{{-}pal} \AttributeTok{{-}nopatch} \AttributeTok{{-}verax16} \AttributeTok{{-}verax16{-}rom}\NormalTok{ vera\_pbi\_handler.rom }\DataTypeTok{\textbackslash{}}
+\NormalTok{     disk2{-}veratests{-}80x30.atr}
+\end{Highlighting}
+\end{Shaded}
+
+Usare il disco della risoluzione da provare (\texttt{40x30},
+\texttt{80x30}, \texttt{80x60}) e avviare dal DUP \texttt{TEST8.COM},
+\texttt{TESTGS8.COM}, \texttt{TESTMAZ8.COM}, \texttt{TESTMTX8.COM}
+(cifra 4 o 6 sugli altri dischi): caricamento font, gradiente,
+scrolling, demo labirinto e matrice.
+
+\subsection{TESTRMT --- player RMT su POKEY +
+VERA}\label{testrmt-player-rmt-su-pokey-vera}
+
+Su tutti i dischi \texttt{disk2-veratests-*.atr}, non richiede
+\texttt{VERA.SYS}. Dal DUP: \texttt{L}, \texttt{TESTRMT.COM}.
+
+\begin{longtable}[]{@{}ll@{}}
+\toprule\noalign{}
+Tasto & Uscita \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\texttt{1} & solo POKEY \\
+\texttt{2} & solo VERA \\
+\texttt{3} & entrambi (default) \\
+\texttt{4} & ibrido, solo RMT8: POKEY canali 1-4, VERA canali 5-8 \\
+\texttt{S} & stereo VERA on/off \\
+\texttt{ESC} & ferma ed esce \\
+\end{longtable}
+
+\subsection{TESTRIO --- musica durante l'I/O su
+disco}\label{testrio-musica-durante-lio-su-disco}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{make}\NormalTok{ disk4{-}rmtio.atr}
+\VariableTok{$EMU} \AttributeTok{{-}xl} \AttributeTok{{-}pal} \AttributeTok{{-}nopatchall} \AttributeTok{{-}nobasic} \DataTypeTok{\textbackslash{}}
+     \AttributeTok{{-}verax16} \AttributeTok{{-}verax16{-}rom}\NormalTok{ vera\_pbi\_handler.rom disk4{-}rmtio.atr}
+\end{Highlighting}
+\end{Shaded}
+
+Il disco avvia da solo \texttt{TESTRIO.COM} (autorun MyPicoDos).
+\texttt{-nopatchall} è obbligatorio: senza, l'emulatore intercetta il
+SIO e non c'è temporizzazione seriale reale. Atteso (PAL, loader RBL):
+\textasciitilde720 byte/s, 0 errori, 0 tick persi.
+
+\subsection{RUNCPM --- terminale ANSI tramite
+FujiNet}\label{runcpm-terminale-ansi-tramite-fujinet}
+
+Terminale 1, FujiNet-PC:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\BuiltInTok{cd}\NormalTok{ FujiNet/fujinet{-}pc{-}ATARI}
+\ExtensionTok{./run{-}fujinet} \AttributeTok{{-}c}\NormalTok{ fnconfig.ini }\AttributeTok{{-}s}\NormalTok{ SD/}
+\end{Highlighting}
+\end{Shaded}
+
+Attendere \texttt{\#\#\#\ NetSIO\ stopped\ \#\#\#} nel log, poi nel
+terminale 2:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\VariableTok{$EMU} \AttributeTok{{-}xl} \AttributeTok{{-}pal} \AttributeTok{{-}nopatch} \AttributeTok{{-}netsio} \AttributeTok{{-}verax16} \AttributeTok{{-}verax16{-}rom}\NormalTok{ vera\_pbi\_handler.rom}
+\end{Highlighting}
+\end{Shaded}
+
+Dettagli in \texttt{README-fujinet.md}.
+
+\section{Risoluzione dei problemi}\label{risoluzione-dei-problemi}
+
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.5000}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.5000}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Sintomo
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Causa / rimedio
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\texttt{ERROR:\ VeraX16\ PBI\ card\ not\ found\ (\$D100\ not\ responding).}
+& manca \texttt{-verax16}: ogni test chiama \texttt{vera\_require()}
+all'avvio \\
+Tre beep dall'altoparlante della console all'avvio & la ROM non ha visto
+la VERA entro \textasciitilde0,7 s; controllare
+\texttt{-verax16-config-ms} \\
+Opzione \texttt{-verax16} sconosciuta & emulatore compilato senza
+\texttt{-\/-enable-pbi-verax16} \\
+VERA muta o molto bassa & aggiungere \texttt{-volume\ 100} o alzare
+\texttt{-verax16-psg-volume} \\
+Un file è sul disco ma il DOS non lo elenca, o ``0 FREE SECTORS'' & bug
+di \texttt{dir2atr}; ricompilare con \texttt{make}, che esegue
+\texttt{vera-tests/tools/fix\_atr\_vtoc.py} \\
+Errori SIO o velocità sbagliata in \texttt{TESTRIO} & manca
+\texttt{-nopatchall} \\
+\end{longtable}
+
+\end{document}
