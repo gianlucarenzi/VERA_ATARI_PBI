@@ -12,6 +12,7 @@
 #include <conio.h>
 #include <atari.h>
 #include "vera_detect.h"
+#include "vera_keys.h"
 
 /* ------------------------------------------------------------------ */
 /* VERA PBI register block at $D100                                    */
@@ -196,6 +197,7 @@ int main(void)
     }
 
     cgetc();             /* consume the keypress */
+    vera_flush_keys();   /* and the copy queued by the VERA driver */
     set_scroll(0, 0);    /* restore scroll origin */
     return 0;
 }

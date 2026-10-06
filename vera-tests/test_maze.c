@@ -2,6 +2,7 @@
 #include <atari.h>
 #include <stdlib.h>
 #include "vera_detect.h"
+#include "vera_keys.h"
 
 int main(void)
 {
@@ -12,10 +13,15 @@ int main(void)
 
     printf("VeraX16 detected (ID: 0x%04X)\n", vera_require());
     printf("Starting character test maze loop (ESC sequence)...\n");
+    printf("Press ESC to exit.\n");
     srand(12345);
+    OS.ch = 0xFF;
 
     while(1)
     {
+        if (vera_esc_pressed())
+            break;
+
 		if (--counter > 1)
 		{
 			if (do_rand)
@@ -39,5 +45,7 @@ int main(void)
 			do_rand = !do_rand;
 		}
     }
+    vera_flush_keys();
+    printf("\nTest ended.\n");
     return 0;
 }

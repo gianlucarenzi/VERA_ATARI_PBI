@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <atari.h>
 #include "vera_detect.h"
+#include "vera_keys.h"
 
 /* --- VERA PBI register block at $D100 (DCSEL=0) --- */
 #define VERA_ADDR_LO  (*(volatile unsigned char*)0xD100)
@@ -97,6 +98,7 @@
 
 static int           screen_width  = 80;
 static int           screen_height = 30;
+static unsigned char saved_border = 6;   /* DC_BORDER at entry, restored on exit */
 
 static unsigned char col_head[MAX_COLS];
 static unsigned char col_active[MAX_COLS];
@@ -118,6 +120,18 @@ static unsigned char fast_rand(void)
 /* ------------------------------------------------------------------ */
 /* Palette setup — call with VERA already selected                     */
 /* ------------------------------------------------------------------ */
+
+/* Original VERA default palette entries 2..4 (GGGGBBBB, 0000RRRR), restored on exit */
+static void restore_default_palette(void)
+{
+    VERA_CTRL     = 0;
+    VERA_ADDR_LO  = 0x04;            /* entry 2 = $1FA04 */
+    VERA_ADDR_MID = 0xFA;
+    VERA_ADDR_HI  = ADDR_H_INC1;
+    VERA_DATA0 = 0x00; VERA_DATA0 = 0x08;   /* 2: #880000 */
+    VERA_DATA0 = 0xFE; VERA_DATA0 = 0x0A;   /* 3: #AAFFEE */
+    VERA_DATA0 = 0x4C; VERA_DATA0 = 0x0C;   /* 4: #CC44CC */
+}
 
 static void setup_matrix_palette(void)
 {
@@ -259,8 +273,10 @@ int main(void)
     VERA_CTRL     = 0;
     screen_width  = (DC_HSCALE >= 128) ? 80 : 40;
     screen_height = (DC_VSCALE >= 128) ? 60 : 30;
+    saved_border = DC_BORDER;
     setup_matrix_palette();
     VERA_OFF();
+    OS.ch = 0xFF;
 
     printf("Mode: %dx%d\n", screen_width, screen_height);
 
@@ -274,10 +290,19 @@ int main(void)
     SDMCTL = 0;
     DMACTL = 0;
 
-    while (1) {
+    while (!vera_esc_pressed()) {
         wait_vbi();
         update_matrix();
     }
 
+    /* Leave the machine as the driver expects it */
+    VERA_ON();
+    restore_default_palette();
+    DC_BORDER = saved_border;
+    VERA_OFF();
+    SDMCTL = 0x22;                  /* standard ANTIC DMA */
+    vera_flush_keys();
+    putchar(125);                   /* clear the VERA screen (ATASCII CLEAR) */
+    printf("Test ended.\n");
     return 0;
 }
