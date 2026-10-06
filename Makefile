@@ -306,49 +306,51 @@ atr: $(TARGET) $(RUNCPM_EXE) $(TEST_FX_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) 
 	@echo "ATR written to $(ATR)"
 	$(call copy_atr_to_fujinet,$(ATR))
 
-# DOS 2.0S only addresses ~707 free sectors: fail the build instead of
-# silently producing a disk with invisible files.
-DOS20_CHECK = check_dos20_capacity.py
+# dir2atr sometimes writes a wrong flags byte in the last directory entries of
+# a large Enhanced Density image (the file is there but DOS does not list it)
+# and leaves VTOC1 wrong ("0 FREE SECTORS").  fix_atr_vtoc.py repairs the
+# image and fails if the files do not fit in the 944 sectors VTOC1 can track.
+FIX_ATR = vera-tests/tools/fix_atr_vtoc.py
 
-disk1-runcpm.atr: $(RUNCPM_EXE) $(SYS8030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(DOS20_CHECK)
+disk1-runcpm.atr: $(RUNCPM_EXE) $(SYS8030) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(FIX_ATR)
 	rm -rf .atrbuild/disk1
 	mkdir -p .atrbuild/disk1
 	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(RUNCPM_EXE) $(SYS8030) .atrbuild/disk1/
-	$(PYTHON) $(DOS20_CHECK) .atrbuild/disk1
 	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk1
+	$(PYTHON) $(FIX_ATR) $@
 	$(call copy_atr_to_fujinet,$@)
 
-disk2-veratests-40x30.atr: TEST4.COM TESTGS4.COM TESTMAZ4.COM TESTMTX4.COM $(SYS4030) $(DOS20_DIR)/DOS.SYS $(DOS20_CHECK) $(DOS20_DIR)/DUP.SYS
+disk2-veratests-40x30.atr: TEST4.COM TESTGS4.COM TESTMAZ4.COM TESTMTX4.COM $(SYS4030) $(DOS20_DIR)/DOS.SYS $(FIX_ATR) $(DOS20_DIR)/DUP.SYS
 	rm -rf .atrbuild/disk2_4030
 	mkdir -p .atrbuild/disk2_4030
 	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST4.COM TESTGS4.COM TESTMAZ4.COM TESTMTX4.COM $(SYS4030) .atrbuild/disk2_4030/
-	$(PYTHON) $(DOS20_CHECK) .atrbuild/disk2_4030
 	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk2_4030
+	$(PYTHON) $(FIX_ATR) $@
 	$(call copy_atr_to_fujinet,$@)
 
-disk2-veratests-80x30.atr: TEST8.COM TESTGS8.COM TESTMAZ8.COM TESTMTX8.COM $(SYS8030) $(DOS20_DIR)/DOS.SYS $(DOS20_CHECK) $(DOS20_DIR)/DUP.SYS
+disk2-veratests-80x30.atr: TEST8.COM TESTGS8.COM TESTMAZ8.COM TESTMTX8.COM $(SYS8030) $(DOS20_DIR)/DOS.SYS $(FIX_ATR) $(DOS20_DIR)/DUP.SYS
 	rm -rf .atrbuild/disk2_8030
 	mkdir -p .atrbuild/disk2_8030
 	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST8.COM TESTGS8.COM TESTMAZ8.COM TESTMTX8.COM $(SYS8030) .atrbuild/disk2_8030/
-	$(PYTHON) $(DOS20_CHECK) .atrbuild/disk2_8030
 	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk2_8030
+	$(PYTHON) $(FIX_ATR) $@
 	$(call copy_atr_to_fujinet,$@)
 
-disk2-veratests-80x60.atr: TEST6.COM TESTGS6.COM TESTMAZ6.COM TESTMTX6.COM $(SYS8060) $(DOS20_DIR)/DOS.SYS $(DOS20_CHECK) $(DOS20_DIR)/DUP.SYS
+disk2-veratests-80x60.atr: TEST6.COM TESTGS6.COM TESTMAZ6.COM TESTMTX6.COM $(SYS8060) $(DOS20_DIR)/DOS.SYS $(FIX_ATR) $(DOS20_DIR)/DUP.SYS
 	rm -rf .atrbuild/disk2_8060
 	mkdir -p .atrbuild/disk2_8060
 	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS TEST6.COM TESTGS6.COM TESTMAZ6.COM TESTMTX6.COM $(SYS8060) .atrbuild/disk2_8060/
-	$(PYTHON) $(DOS20_CHECK) .atrbuild/disk2_8060
 	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk2_8060
+	$(PYTHON) $(FIX_ATR) $@
 	$(call copy_atr_to_fujinet,$@)
 
 # Tests that do not need VERA.SYS (same files for every screen mode)
-disk3-standalone.atr: $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(DOS20_CHECK)
+disk3-standalone.atr: $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(FIX_ATR)
 	rm -rf .atrbuild/disk3
 	mkdir -p .atrbuild/disk3
-	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) .atrbuild/disk3/
-	$(PYTHON) $(DOS20_CHECK) .atrbuild/disk3
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(wildcard $(DEMO_IMAGE_BIN)) .atrbuild/disk3/
 	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk3
+	$(PYTHON) $(FIX_ATR) $@
 	$(call copy_atr_to_fujinet,$@)
 
 # === Cleanup ================================================================

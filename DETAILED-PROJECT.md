@@ -444,11 +444,12 @@ l'`INIT` non scrive sul bus e segnala il problema con **tre beep** dall'altoparl
 |---|---|
 | `disk1-runcpm.atr` | DOS 2.0S, `RUNCPM.COM`, `VERA8030.SYS` |
 | `disk2-veratests-{40x30,80x30,80x60}.atr` | DOS 2.0S, test con driver integrato (`TESTn`, `TESTGSn`, `TESTMAZn`, `TESTMTXn`) e il `VERAxxxx.SYS` della risoluzione |
-| `disk3-standalone.atr` | DOS 2.0S, test che non usano il driver: `TESTFX.COM`, `TESTIRQ.COM`, `TESTPLR.COM` + `DEMO.VTM` |
+| `disk3-standalone.atr` | DOS 2.0S, test che non usano il driver: `TESTFX.COM`, `TESTIRQ.COM`, `TESTPLR.COM` + `DEMO.VTM` e, se presente, `DEMO.VBM` (splash del player) |
 
-Il DOS 2.0S indirizza solo ~707 settori liberi anche se `dir2atr` crea un'immagine a densità
-estesa: i file oltre il limite vengono scritti ma il DOS non li vede. `check_dos20_capacity.py` conta
-i settori (125 byte di dati ciascuno) prima di ogni `dir2atr` e fa fallire la build se un disco non ci
-sta. Prima di questa divisione `TESTPLR.COM` (dopo l'aggiunta di `TESTIRQ.COM`) e `VERA8030.SYS`
-non erano visibili sui dischi `disk2`.
-
+Le immagini sono Enhanced Density (130K) create da `dir2atr`. Su immagini grandi `dir2atr` a volte
+scrive un flag sbagliato nelle ultime voci della directory (il file c'è ma il DOS non lo elenca) e
+lascia la VTOC errata ("0 FREE SECTORS"): è quello che rendeva invisibili `TESTPLR.COM` e
+`VERAxxxx.SYS` sui dischi `disk2`. Dopo ogni `dir2atr` il Makefile esegue
+`vera-tests/tools/fix_atr_vtoc.py`, che ripara directory e VTOC e fa fallire la build se i file non
+stanno nei 944 settori che la VTOC del DOS 2.0S può descrivere. `disk3-standalone.atr` con `DEMO.VBM`
+occupa 930 settori su 944.

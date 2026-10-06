@@ -17,7 +17,9 @@
 ;
 ; C API (see vbm.h):
 ;   void vbm_init(void);   switch to bitmap mode, screen goes black
-;   void vbm_done(void);   restore whatever vbm_init() found
+;   void vbm_done(void);   restore whatever vbm_init() found, plus the
+;                          default palette entries 0-15 (the image's own
+;                          256-colour palette overwrites them)
 ; vbm_loader.c-internal (not in vbm.h — see its extern declarations):
 ;   void vbm_seek_palette(void);       VRAM address -> $1:FA00, auto-incr+1
 ;   void vbm_seek_pixels(void);        VRAM address -> $0:0000, auto-incr+1
@@ -83,7 +85,10 @@ _vbm_init:
     rts
 
 ; ============================================================================
-; _vbm_done — restore the display composer state _vbm_init saved.
+; _vbm_done — restore the display composer state _vbm_init saved, and the
+; default Commander X16 palette entries 0-15 used by the text screen (the
+; .vbm palette replaced all 256 entries; the previous values are not saved,
+; the defaults are written back).
 ; ============================================================================
 
 _vbm_done:
@@ -100,10 +105,29 @@ _vbm_done:
     lda saved_vscale
     sta VERA_DC_VSCALE
 
+    lda #$00                        ; palette entry 0 = VRAM $1:FA00
+    sta VERA_ADDR_L
+    lda #$FA
+    sta VERA_ADDR_M
+    lda #(VERA_INC1 | $01)
+    sta VERA_ADDR_H
+    ldx #0
+@pal:
+    lda default_palette16,x
+    sta VERA_DATA0
+    inx
+    cpx #32
+    bne @pal
+
     lda #0
     sta PBI_LATCH
     dec CRITIC
     rts
+
+; Commander X16 default palette, entries 0-15 (byte 0 = GGGGBBBB, byte 1 = 0000RRRR)
+default_palette16:
+    .byte $00,$00, $FF,$0F, $00,$08, $FE,$0A, $4C,$0C, $C5,$00, $0A,$00, $E7,$0E
+    .byte $85,$0D, $40,$06, $77,$0F, $33,$03, $77,$07, $F6,$0A, $8F,$00, $BB,$0B
 
 ; ============================================================================
 ; _vbm_seek_palette / _vbm_seek_pixels — point the auto-incrementing VRAM
