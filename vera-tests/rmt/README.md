@@ -34,7 +34,7 @@ La VERA ha 16 voci PSG, ma il formato RMT non va oltre gli 8 canali: le voci 8-1
 
 | POKEY | VERA PSG |
 |---|---|
-| frequenza da `AUDF` + `AUDCTL` (64/15 kHz, 1,79 MHz, canali uniti a 16 bit) | parola = K / n, n = divisore in cicli macchina; 64 kHz 8 bit da tabella (`tools/mkpsgtab.py`), gli altri modi con una divisione, solo quando il divisore cambia |
+| frequenza da `AUDF` + `AUDCTL` (64/15 kHz, 1,79 MHz, canali uniti a 16 bit) | parola = K / n, n = divisore in cicli macchina; 64 kHz 8 bit da tabella (`tools/mkpsgtab.py`), gli altri modi con una divisione, solo quando cambiano `AUDF`, `AUDCTL` o la distorsione |
 | tono puro | impulso 50% |
 | distorsione C (poly4), toni poly5 | impulso 25% |
 | rumore poly17 / poly5 | rumore della VERA |
@@ -117,18 +117,22 @@ Sui dischi `disk2-veratests-*.atr`; non richiede `VERA.SYS`.
 | `ESC` | ferma e esce |
 
 Mostra frame, tempo del player nel VBI (righe raster) e i volumi POKEY / livelli VERA dei canali
-(per RMT8 la seconda riga, "R", è il POKEY di destra che non esiste in hardware). Tempo nel VBI in
-emulatore (massimo, uscita BOTH):
+(per RMT8 la seconda riga, "R", è il POKEY di destra che non esiste in hardware).
 
-| Brano | PAL (312 righe) | NTSC (262 righe) |
-|---|---|---|
-| `gemx` (RMT4, speed 1) | 38 | 44 |
-| `wings_of_death_lv2` (RMT4, speed 2) | 48 | 62 |
-| `turrican2_rev2s` (RMT8, speed 1) | 58 | 76 |
-| RMT8 con instrument speed 4 | 162 | 230 |
+Tempo del player nel VBI in emulatore (`rmt_lines`, righe raster): massimo su 500 frame, media tra
+parentesi, PAL. In NTSC i valori sono gli stessi, con il massimo fino a 2 righe in più.
 
-In NTSC le righe sono di più a parità di lavoro: il vertical blank è più corto e più righe hanno il
-DMA di ANTIC. Un modulo RMT8 a speed 4 lascia pochissima CPU al programma principale.
+| Brano | POKEY | VERA | entrambi |
+|---|---|---|---|
+| `gemx` (RMT4, speed 1) | 22 (10,1) | 34 (16,9) | 34 (19,0) |
+| `PROJECT-X_THESMOPHORIA_pokey` (RMT4, speed 1) | 26 (12,8) | 34 (18,4) | 36 (18,9) |
+| `turrican2_rev2s` (RMT8, speed 1) | 32 (14,7) | 36 (21,4) | 36 (22,3) |
+
+La parte VERA (`psg_update`) costa 600-800 cicli per frame: un blocco srotolato per canale, i byte
+scritti direttamente su `DATA0`. Prima di questa versione l'uscita "entrambi" arrivava a 44 / 44 / 56
+righe in PAL e 50 / 50 / 68 in NTSC (medie 28,3 / 28,3 / 40,9). Con instrument speed N il player
+(non `psg_update`) viene chiamato N volte per frame: un modulo RMT8 a speed 4 lascia poca CPU al
+programma principale.
 
 ## Compilazione
 
