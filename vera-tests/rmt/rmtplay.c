@@ -3,7 +3,9 @@
  * (ANTIC) and on the VERA screen.
  *
  *   NAME / AUTHOR / DATE of the song (tools/rmtinfo.py: text stored in the
- *   .rmt file, or RMT_NAME= RMT_AUTHOR= RMT_DATE= on the make line)
+ *   .rmt file, or RMT_NAME= RMT_AUTHOR= RMT_DATE= on the make line); a line
+ *   longer than 40 characters scrolls left (coarse, one character at a time)
+ *   after 5 seconds of play
  *   one volume bar per channel (4 for RMT4, 8 for RMT8): ANTIC mode 4
  *   rows on a black background, coloured row by row by a DLI
  *   AUDF / AUDC of every channel and AUDCTL, in hex
@@ -418,6 +420,35 @@ static void dli_off(void)
 
 /* ---- static parts of the screen ---------------------------------------- */
 
+#define SCROLL_WAIT     5       /* seconds of play before a long line scrolls */
+#define SCROLL_SHIFT    3       /* one character every 8 frames */
+#define SCROLL_GAP      40      /* blanks between the end and the start again:
+                                 * a whole row, so the text leaves the screen
+                                 * before it comes back in from the right */
+#define SCROLL_SEEK     3       /* VERA writes of a new address: unchanged
+                                 * gaps up to this long are written over */
+
+/* NAME, AUTHOR, DATE: on rows ROW_NAME, ROW_NAME + 1, ROW_NAME + 2 */
+static const char *const info_text[3] = { RMT_INFO_NAME, RMT_INFO_AUTHOR, RMT_INFO_DATE };
+static unsigned char info_len[3];
+static unsigned char info_shown[3];         /* scroll offset drawn */
+static unsigned char info_cells[3][40];     /* screen codes on the row */
+
+/* the 40 cells of a long info line, from scroll offset k */
+static void info_render(unsigned char i, unsigned char k, unsigned char *buf)
+{
+    const char *s = info_text[i];
+    unsigned char len = info_len[i];
+    unsigned char period = len + SCROLL_GAP;
+    unsigned char n;
+
+    for (n = 0; n < 40; n++) {
+        buf[n] = k < len ? screen_code((unsigned char)s[k]) : 0;
+        if (++k == period)
+            k = 0;
+    }
+}
+
 static void draw_static(void)
 {
     unsigned char i, x;
@@ -434,9 +465,18 @@ static void draw_static(void)
     memcpy(title + 36, OS.palnts ? "PAL " : "NTSC", 4);
     put_text(0, ROW_TITLE, title, 0x80);
 
-    put_center(ROW_NAME, RMT_INFO_NAME);
-    put_center(ROW_AUTHOR, RMT_INFO_AUTHOR);
-    put_center(ROW_DATE, RMT_INFO_DATE);
+    /* a line longer than the screen shows its first 40 characters until
+     * draw_info() starts scrolling it */
+    for (i = 0; i < 3; i++) {
+        info_len[i] = (unsigned char)strlen(info_text[i]);
+        if (info_len[i] <= 40) {
+            put_center(ROW_NAME + i, info_text[i]);
+            continue;
+        }
+        info_shown[i] = 0;
+        info_render(i, 0, info_cells[i]);
+        put_codes(0, ROW_NAME + i, info_cells[i], 40);
+    }
 
     for (i = 0; i < RMT_TRACKS; i++) {
         x = BAR_X0 + i * BAR_STEP + (BAR_W - 2) / 2;
@@ -464,6 +504,54 @@ static void draw_static(void)
 }
 
 /* ---- dynamic parts ----------------------------------------------------- */
+
+/* Coarse scroll of the info lines longer than 40 characters: the text and
+ * SCROLL_GAP blanks go round in the 40 columns of the row. The offset comes
+ * from the play time, so it stops in pause and starts again from 0 (after
+ * the wait) when the song is restarted.
+ *
+ * Only the cells that change are written (info_cells[] keeps the row): no
+ * writes while the row is blank, none for repeated characters. Changed cells
+ * close together go out as one run, so VERA gets a new address only when
+ * the unchanged gap is longer than the SCROLL_SEEK writes of a seek. */
+static void draw_info(unsigned long frames, unsigned char fps)
+{
+    unsigned int wait = fps * SCROLL_WAIT;
+    unsigned int step;
+    unsigned char i, k, x, start, end;
+    unsigned char *old;
+
+    step = frames < wait ? 0 : (unsigned int)((frames - wait) >> SCROLL_SHIFT);
+    for (i = 0; i < 3; i++) {
+        if (info_len[i] <= 40)
+            continue;
+        k = (unsigned char)(step % (unsigned char)(info_len[i] + SCROLL_GAP));
+        if (k == info_shown[i])
+            continue;
+        info_shown[i] = k;
+        info_render(i, k, line_buf);
+        old = info_cells[i];
+        x = 0;
+        while (x < 40) {
+            if (line_buf[x] == old[x]) {
+                x++;
+                continue;
+            }
+            /* run from the first changed cell to the last changed one
+             * before a gap longer than SCROLL_SEEK */
+            start = x;
+            end = ++x;
+            for (; x < 40; x++) {
+                if (line_buf[x] != old[x])
+                    end = x + 1;
+                else if (x - end >= SCROLL_SEEK)
+                    break;
+            }
+            put_codes(start, ROW_NAME + i, line_buf + start, end - start);
+            memcpy(old + start, line_buf + start, end - start);
+        }
+    }
+}
 
 static void draw_bars(unsigned char paused)
 {
@@ -623,6 +711,7 @@ int main(void)
         draw_regs();
         draw_position();
         draw_state(frames, fps, mode, paused);
+        draw_info(frames, fps);
 
         if (!kbhit())
             continue;
