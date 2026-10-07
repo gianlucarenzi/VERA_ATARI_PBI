@@ -56,7 +56,8 @@ song_abs=$(realpath "$song")
 case $song_abs in
     *[[:space:]]*)
         mkdir -p "$dir/vera-tests/rmt/gen"
-        copy="$dir/vera-tests/rmt/gen/$(basename "$song_abs" | tr '[:space:]' '_')"
+        base=$(basename "$song_abs")
+        copy="$dir/vera-tests/rmt/gen/${base//[[:space:]]/_}"
         cp "$song_abs" "$copy"
         song_abs=$copy
         ;;
