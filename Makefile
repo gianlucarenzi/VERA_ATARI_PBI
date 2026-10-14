@@ -275,34 +275,50 @@ $(TEST_IRQ_EXE): $(TEST_IRQ_SRC) $(VERA_IRQ_OBJ) vera-tests/vera_irq.h vera-test
 
 # --- RMT player on POKEY + VERA PSG (standalone, no VERA.SYS needed) --------
 #   make TESTRMT.COM RMT_SONG=vera-tests/rmt/music/other.rmt
+#   make TESTRMT.COM RMT_SONG=vera-tests/rmt/music/gemx.sap [RMT_SUBSONG=n]
+# A .sap or .xex exported by RITMO / RMT is played from its LZSS streams (the
+# POKEY registers RMT recorded, as VU-Player plays them) by lzsplayr.s, the
+# same interface as rmtplayr.s.
 
 RMT_DIR      = vera-tests/rmt
 RMT_GEN      = $(RMT_DIR)/gen
 RMT_SONG    ?= $(RMT_DIR)/music/gemx.rmt
 RMT_SONGNAME = $(basename $(notdir $(RMT_SONG)))
+RMT_SUBSONG ?= 0
 # 4 for RMT4 (mono) modules, 8 for RMT8 (stereo): player, translator and C
 # side are built for the module's track count (checked again at link time)
+ifneq ($(filter .sap .SAP .xex .XEX,$(suffix $(RMT_SONG))),)
+RMT_LZSS     = 1
+RMT_PLAYER   = $(RMT_DIR)/lzsplayr.s
+RMT_TRACKS  := $(shell $(PYTHON) $(RMT_DIR)/tools/sap2ca65.py $(RMT_SONG) --tracks)
+else
+RMT_PLAYER   = $(RMT_DIR)/rmtplayr.s
 RMT_TRACKS  := $(shell $(PYTHON) -c "d=open('$(RMT_SONG)','rb').read(10); print(8 if d[6:10]==b'RMT8' else 4)")
+endif
 TEST_RMT_EXE = TESTRMT.COM
 TEST_RIO_EXE = TESTRIO.COM
-RMT_ASM      = $(RMT_DIR)/rmtplayr.s $(RMT_DIR)/rmtvbi.s $(RMT_DIR)/psgrmt.s
+RMT_ASM      = $(RMT_PLAYER) $(RMT_DIR)/rmtvbi.s $(RMT_DIR)/psgrmt.s
 
 $(RMT_GEN)/psgtab.s: $(RMT_DIR)/tools/mkpsgtab.py
 	@mkdir -p $(RMT_GEN)
 	$(PYTHON) $< $@
 
-# one stamp per song name: switching RMT_SONG regenerates song.s even when
-# the new .rmt file is older than the last song.s
-RMT_SONG_STAMP = $(RMT_GEN)/song.$(RMT_SONGNAME).stamp
+# one stamp per song file name (and subtune): switching RMT_SONG regenerates
+# song.s even when the new song file is older than the last song.s
+RMT_SONG_STAMP = $(RMT_GEN)/song.$(notdir $(RMT_SONG))$(if $(RMT_LZSS),.$(RMT_SUBSONG)).stamp
 
 $(RMT_SONG_STAMP):
 	@mkdir -p $(RMT_GEN)
 	@rm -f $(RMT_GEN)/song.*.stamp
 	@touch $@
 
-$(RMT_GEN)/song.s: $(RMT_SONG) $(RMT_DIR)/tools/rmt2ca65.py $(RMT_SONG_STAMP)
+$(RMT_GEN)/song.s: $(RMT_SONG) $(RMT_DIR)/tools/rmt2ca65.py $(RMT_DIR)/tools/sap2ca65.py $(RMT_SONG_STAMP)
 	@mkdir -p $(RMT_GEN)
+ifdef RMT_LZSS
+	$(PYTHON) $(RMT_DIR)/tools/sap2ca65.py $(RMT_SONG) $@ --subsong $(RMT_SUBSONG)
+else
 	$(PYTHON) $(RMT_DIR)/tools/rmt2ca65.py $(RMT_SONG) $@
+endif
 
 $(TEST_RMT_EXE): $(RMT_DIR)/test_rmt.c $(RMT_DIR)/rmt.h $(RMT_ASM) $(RMT_DIR)/rmt_feat.inc $(RMT_DIR)/testrmt.cfg $(RMT_GEN)/psgtab.s $(RMT_GEN)/song.s vera_common.inc vera-tests/vera_detect.h
 	cl65 -t atari -C $(RMT_DIR)/testrmt.cfg -I vera-tests -I $(RMT_DIR) \
@@ -341,18 +357,23 @@ $(RMT_GEN)/rmtplay.cfg: FORCE
 # song info options kept in a stamp file: changing them regenerates the header
 $(RMT_GEN)/songinfo.cfg: FORCE
 	@mkdir -p $(RMT_GEN)
-	@printf '%s\n' '$(RMT_SONG)|$(RMT_NAME)|$(RMT_AUTHOR)|$(RMT_DATE)' | cmp -s - $@ || \
-		printf '%s\n' '$(RMT_SONG)|$(RMT_NAME)|$(RMT_AUTHOR)|$(RMT_DATE)' > $@
+	@printf '%s\n' '$(RMT_SONG)|$(RMT_SUBSONG)|$(RMT_NAME)|$(RMT_AUTHOR)|$(RMT_DATE)' | cmp -s - $@ || \
+		printf '%s\n' '$(RMT_SONG)|$(RMT_SUBSONG)|$(RMT_NAME)|$(RMT_AUTHOR)|$(RMT_DATE)' > $@
 
-$(RMT_GEN)/songinfo.h: $(RMT_SONG) $(RMT_DIR)/tools/rmtinfo.py $(RMT_GEN)/songinfo.cfg
+$(RMT_GEN)/songinfo.h: $(RMT_SONG) $(RMT_DIR)/tools/rmtinfo.py $(RMT_DIR)/tools/sap2ca65.py $(RMT_GEN)/songinfo.cfg
+ifdef RMT_LZSS
+	$(PYTHON) $(RMT_DIR)/tools/sap2ca65.py $(RMT_SONG) /dev/null --subsong $(RMT_SUBSONG) --info $@ \
+		--name "$(RMT_NAME)" --author "$(RMT_AUTHOR)" --date "$(RMT_DATE)"
+else
 	$(PYTHON) $(RMT_DIR)/tools/rmtinfo.py $(RMT_SONG) $@ \
 		--name "$(RMT_NAME)" --author "$(RMT_AUTHOR)" --date "$(RMT_DATE)"
+endif
 
 $(RMT_PLAY_EXE): $(RMT_DIR)/rmtplay.c $(RMT_DIR)/rmtdli.s $(RMT_DIR)/rmt.h $(RMT_ASM) $(RMT_DIR)/rmt_feat.inc $(RMT_DIR)/testrmt.cfg $(RMT_GEN)/psgtab.s $(RMT_GEN)/song.s $(RMT_GEN)/songinfo.h $(RMT_GEN)/rmtplay.cfg vera_common.inc vera-tests/vera_detect.h
 	cl65 -t atari -O -C $(RMT_DIR)/testrmt.cfg -I vera-tests -I $(RMT_DIR) -I $(RMT_GEN) \
 	     --asm-include-dir . --asm-include-dir $(RMT_DIR) --asm-define RMT_VERA \
 	     --asm-define RMT_TRACKS=$(RMT_TRACKS) -DRMT_TRACKS=$(RMT_TRACKS) $(RMT_SCREEN_FLAGS) \
-	     -o $@ $(RMT_DIR)/rmtplay.c $(RMT_DIR)/rmtdli.s $(RMT_ASM) $(RMT_GEN)/psgtab.s $(RMT_GEN)/song.s
+	     $(if $(RMT_LZSS),-DRMT_LZSS) -o $@ $(RMT_DIR)/rmtplay.c $(RMT_DIR)/rmtdli.s $(RMT_ASM) $(RMT_GEN)/psgtab.s $(RMT_GEN)/song.s
 
 # TESTRIO: same player while loading assets from disk through SIO (from
 # AT2019/ATARI-Driver/PokeyATest). Own bootable disk, MyPicoDos autorun:

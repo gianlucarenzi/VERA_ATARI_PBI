@@ -9,7 +9,9 @@
  *   one volume bar per channel (4 for RMT4, 8 for RMT8): ANTIC mode 4
  *   rows on a black background, coloured row by row by a DLI
  *   AUDF / AUDC of every channel and AUDCTL, in hex
- *   song line, row in the track, speed, play time
+ *   song line, row in the track, speed, play time; for a .sap/.xex song
+ *   (RMT_LZSS, lzsplayr.s) the section of the LZSS stream (intro, loop) and
+ *   the frame in it
  *
  *   SPACE  pause / play          R  restart the song
  *   1 POKEY   2 VERA   3 both    4  hybrid (RMT8: POKEY 1-4, VERA 5-8)
@@ -26,8 +28,8 @@
  * RMTPLAY_VERA, both 1 by default. With VERA only the ANTIC display DMA is
  * turned off (black Atari screen, more CPU time for the player).
  *
- * Sound: the same player as TESTRMT (rmtplayr.s + rmtvbi.s + psgrmt.s, POKEY
- * and/or VERA PSG). Standalone: does not need VERA.SYS.
+ * Sound: the same player as TESTRMT (rmtplayr.s or lzsplayr.s + rmtvbi.s +
+ * psgrmt.s, POKEY and/or VERA PSG). Standalone: does not need VERA.SYS.
  */
 
 #include <atari.h>
@@ -48,6 +50,9 @@ extern volatile unsigned char rmt_chan_audf[RMT_TRACKS];
 extern volatile unsigned char rmt_chan_audc[RMT_TRACKS];
 extern volatile unsigned char rmt_audctl, rmt_audctl2;
 extern const unsigned char rmt_song_end[];
+/* LZSS player (lzsplayr.s, a .sap/.xex song): stream position */
+extern volatile unsigned char lzs_section;          /* section of the next frame */
+extern volatile unsigned char lzs_pos[3];           /* its frame in the section, 24 bit */
 
 extern void rmt_dli(void);
 extern unsigned char rmt_dli_pf0[];
@@ -159,9 +164,14 @@ static unsigned char changed(unsigned char f, unsigned int v)
     shown[f] = v;
     return 1;
 }
+#ifdef RMT_LZSS
+/* rmt_play calls of each section (sap2ca65.py) */
+static const unsigned long sec_frames[RMT_INFO_SECTIONS] = RMT_INFO_FRAMES;
+#else
 static unsigned char song_shift;            /* bytes per song line: 1 << shift */
 static const unsigned char *song_start;
 static unsigned int song_lines;
+#endif
 
 /* ---- screen helpers --------------------------------------------------- */
 
@@ -493,7 +503,11 @@ static void draw_static(void)
     put_text(0, ROW_AUDF, "AUDF", 0);
     put_text(0, ROW_AUDC, "AUDC", 0);
     put_text(0, ROW_AUDCTL, "AUDCTL", 0);
+#ifdef RMT_LZSS
+    put_text(0, ROW_POS, "SECT   /     FRAME       /", 0);
+#else
     put_text(0, ROW_POS, "LINE   /      ROW   /     SPEED", 0);
+#endif
     put_text(0, ROW_STATE, "TIME   :      OUT", 0);
     put_text(0, ROW_KEYS1, "SPC PAUSE R RESTART 123", 0);
 #if RMT_TRACKS > 4
@@ -601,6 +615,37 @@ static void draw_regs(void)
 #endif
 }
 
+#ifdef RMT_LZSS
+static void put_hex24(unsigned char x, unsigned char y, unsigned long v)
+{
+    put_hex(x, y, (unsigned char)(v >> 16));
+    put_hex(x + 2, y, (unsigned char)(v >> 8));
+    put_hex(x + 4, y, (unsigned char)v);
+}
+
+/* LZSS: section of the stream and frame in it, of the next frame */
+static void draw_position(void)
+{
+    unsigned char sec, lo, mid, hi;
+
+    /* the VBI may change them between the reads */
+    do {
+        sec = lzs_section;
+        lo = lzs_pos[0];
+        mid = lzs_pos[1];
+        hi = lzs_pos[2];
+    } while (sec != lzs_section || lo != lzs_pos[0]);
+
+    if (changed(F_LINE, sec)) {
+        put_hex(5, ROW_POS, sec);
+        put_hex24(26, ROW_POS, sec_frames[sec] - 1);
+    }
+    if (changed(F_LINES, RMT_INFO_SECTIONS - 1))
+        put_hex(8, ROW_POS, RMT_INFO_SECTIONS - 1);
+    if (changed(F_ROW, ((unsigned int)mid << 8) | lo) | changed(F_ROWS, hi))
+        put_hex24(19, ROW_POS, ((unsigned long)hi << 16) | ((unsigned int)mid << 8) | lo);
+}
+#else
 static void draw_position(void)
 {
     const unsigned char *a, *b;
@@ -625,6 +670,7 @@ static void draw_position(void)
     if (changed(F_SPEED, rmt_speed))
         put_hex(32, ROW_POS, rmt_speed);
 }
+#endif
 
 static void draw_state(unsigned long frames, unsigned char fps, unsigned char mode,
                        unsigned char paused)
@@ -666,6 +712,7 @@ int main(void)
     clrscr();
     vera_require();
 
+#ifndef RMT_LZSS
 #if RMT_TRACKS > 4
     song_shift = 3;     /* 8 bytes per song line */
 #else
@@ -673,6 +720,7 @@ int main(void)
 #endif
     song_start = (const unsigned char *)(rmt_song[14] | (rmt_song[15] << 8));
     song_lines = (unsigned int)(rmt_song_end - song_start) >> song_shift;
+#endif
 
     OS.crsinh = 1;
     clrscr();

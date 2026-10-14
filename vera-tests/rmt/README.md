@@ -5,6 +5,8 @@ Suona i moduli RMT (Raster Music Tracker) sul POKEY, sul PSG della VERA, o su en
 - **RMT4** (mono, 4 canali): voci PSG 0-3;
 - **RMT8** (stereo, pensati per due POKEY): voci PSG 0-7. I canali 1-4 suonano anche sul POKEY
   reale; i canali 5-8, che su un Atari con un solo POKEY andrebbero persi, suonano sulla VERA.
+- **SAP / XEX esportati da RITMO** (o da RMT 1.31+): i registri POKEY registrati da RMT, compressi
+  LZSS, suonati da `lzsplayr.s` come li suona VU-Player (vedi "SAP e XEX esportati da RITMO").
 
 La VERA ha 16 voci PSG, ma il formato RMT non va oltre gli 8 canali: le voci 8-15 restano libere.
 
@@ -49,6 +51,50 @@ La VERA ha 16 voci PSG, ma il formato RMT non va oltre gli 8 canali: le voci 8-1
 - Le scritture nella VERA avvengono dentro l'interrupt: `CTRL`, `FX_CTRL` e l'indirizzo della porta 0
   vengono salvati e ripristinati, quindi il programma interrotto può essere a metà di un accesso alla
   VRAM.
+
+## SAP e XEX esportati da RITMO: `lzsplayr.s`
+
+Un `.sap` o `.xex` esportato da RITMO (o da Raster Music Tracker 1.31 e successivi) non contiene il
+modulo RMT: contiene i registri POKEY che RMT ha registrato frame per frame, con il driver scelto
+nelle opzioni (di default Patch16, intonato diversamente dal `rmtplayr.s` di RMT 1.28), compressi
+LZSS (LZ16 di DMSC) e suonati da VU-Player v2. Con un file così come `RMT_SONG`, il Makefile usa
+`lzsplayr.s` al posto di `rmtplayr.s`: stessa interfaccia (`rmt_init`, `rmt_play`, `rmt_silence`,
+`rmt_ioactive`, `trackn_audf`/`trackn_audc`/`v_audctl` per `psgrmt.s`, `rmt_pokey_mute`...),
+stesse build `RMT_VERA` e `RMT_TRACKS`. POKEY e VERA suonano quello che suona il SAP / XEX.
+
+```sh
+make RMTPLAY.COM RMT_SONG=vera-tests/rmt/music/gemx.sap            # mono
+make RMTPLAY.COM RMT_SONG=vera-tests/rmt/music/Final_Fantasy.sap   # stereo: canali 5-8 sulla VERA
+make TESTRMT.COM RMT_SONG=file.xex RMT_SUBSONG=1                   # un altro subtune
+./rmtplay.sh vera-tests/rmt/music/gemx.sap [antic|vera|both]
+```
+
+- `tools/sap2ca65.py` estrae un subtune dalla memoria di VU-Player del file (indice dei brani a
+  `$1F40`, instrument speed, flag stereo) e scrive le sezioni intro e loop come sorgente
+  rilocabile; decodifica ogni sezione una volta per controllarla. `--tracks` dà 4 o 8 al Makefile
+  (`RMT_TRACKS`), `--info` scrive `songinfo.h` dai tag `NAME` / `AUTHOR` / `DATE` del SAP o dal
+  testo a video dello XEX.
+- `lzsplayr.s` decodifica un frame per `rmt_play` (9 flussi di byte con una finestra di 256 byte
+  ciascuno: 2,3 KB di BSS, 4 byte di pagina zero): l'intro una volta, poi il loop all'infinito.
+  Come `rmtplayr.s`, `rmt_play` scrive prima il POKEY e poi decodifica il frame successivo. Uno
+  stereo decodifica due frame per chiamata: il sinistro nei canali 1-4 (POKEY), il destro nei
+  canali 5-8 e in `v_audctl2` (solo VERA).
+- Instrument speed N: lo stream ha N frame per frame video, `rmtvbi.s` chiama il player N volte
+  per frame come per un `.rmt`.
+- RMTPLAY mostra `SECT` (sezione dello stream: 0 intro, 1 loop, oppure 0 se il brano torna
+  all'inizio) e `FRAME` (frame nella sezione / ultimo frame) al posto di riga, row e speed.
+
+Verificato: su un emulatore 6502 `lzsplayr.s` dà i registri POKEY di VU-Player v2 byte per byte
+(22 export SAP di 11 brani con i driver Patch16 e Unpatched, più stereo e instrument speed 2). In
+atari800 con `-verax16` e `-pokeyrec` RMTPLAY suona `gemx.sap` per 7,4 minuti e
+`Final_Fantasy.sap` (stereo, POKEY = canali di sinistra) per 8 minuti, e un brano a speed 2 per 6
+minuti, con ogni frame uguale a quello decodificato dal file.
+
+In un SAP esportato da RITMO prima della 2.6, VU-Player stesso dopo il secondo giro del loop va
+avanti diversamente: il suo `INIT` azzerava il contatore dei loop che l'export mette a `$FF`
+(infinito), quindi alla seconda fine del loop parte una dissolvenza che si ferma dopo un passo: dal
+terzo giro suona un gradino di volume più basso e un frame prima. `lzsplayr.s` continua il loop a
+volume pieno, come voleva l'export e come suona un SAP di RITMO 2.6.
 
 ## Musica durante l'I/O da disco
 
@@ -143,7 +189,8 @@ make TESTRMT.COM RMT_SONG=vera-tests/rmt/music/turrican2_rev2s.rmt  # RMT8, ster
 
 Il brano viene collegato nell'eseguibile (`tools/rmt2ca65.py` lo rende rilocabile ed esporta
 `rmt_song_tracks`). Il Makefile ricava `RMT_TRACKS` (4 o 8) dall'intestazione del modulo e il linker
-verifica che player e modulo coincidano. I dischi contengono la versione di default.
+verifica che player e modulo coincidano. I dischi contengono la versione di default. Un `.sap` o
+`.xex` passa da `tools/sap2ca65.py` e `lzsplayr.s` (vedi sopra).
 
 ## Limiti
 
@@ -153,4 +200,6 @@ verifica che player e modulo coincidano. I dischi contengono la versione di defa
 - Modo "solo volume" (campioni) e filtri passa-alto del POKEY non riprodotti sulla VERA.
 
 Brani inclusi: `gemx.rmt`, `PROJECT-X_THESMOPHORIA_pokey.rmt` (RMT4, da `AT2019/ATARI-Driver`),
-`turrican2_rev2s.rmt` (RMT8, di Raster, dagli esempi di Raster Music Tracker).
+`turrican2_rev2s.rmt` (RMT8, di Raster, dagli esempi di Raster Music Tracker); `gemx.sap` (gemx
+esportato da RITMO, driver Patch16) e `Final_Fantasy.sap` (RMT8 di kjmann dai brani di RITMO,
+esportato stereo).

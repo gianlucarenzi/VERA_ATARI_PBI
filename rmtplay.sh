@@ -2,9 +2,11 @@
 # rmtplay.sh — build RMTPLAY.COM for an RMT song and play it in atari800
 # with the VeraX16 PBI card.
 #
-#   ./rmtplay.sh SONG.rmt [antic|vera|both]
+#   ./rmtplay.sh SONG.rmt|SONG.sap|SONG.xex [antic|vera|both]
 #
 #   SONG.rmt   RMT4 or RMT8 module (any path)
+#   SONG.sap   SAP or XEX exported by RITMO / RMT: its LZSS streams, played
+#   SONG.xex   by vera-tests/rmt/lzsplayr.s (RMT_SUBSONG=n: another subtune)
 #   antic      visualizer on the Atari screen only
 #   vera       visualizer on the VERA screen only (Atari screen off)
 #   both       on both screens (default)
@@ -13,7 +15,9 @@
 #   ATARI800       emulator to run (default: atari800 from PATH)
 #   ATARI800_OPTS  extra emulator options, e.g. "-pal -verax16-scale 2"
 #   RMT_NAME, RMT_AUTHOR, RMT_DATE   song info shown by the player instead
-#                  of the text stored in the .rmt (see tools/rmtinfo.py)
+#                  of the text stored in the .rmt (see tools/rmtinfo.py) or
+#                  of the SAP tags (tools/sap2ca65.py)
+#   RMT_SUBSONG    subtune of a .sap / .xex (default 0)
 #
 # Sound always plays on POKEY + VERA PSG; keys in the player: SPACE pause,
 # R restart, 1/2/3 POKEY/VERA/both, 4 hybrid (RMT8), S stereo, ESC exit.
@@ -21,7 +25,7 @@
 set -euo pipefail
 
 usage() {
-    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
 }
 
@@ -39,10 +43,20 @@ if [ ! -f "$song" ]; then
     echo "rmtplay.sh: $song: no such file" >&2
     exit 1
 fi
-if [ "$(head -c 2 "$song" | od -An -tx1 | tr -d ' \n')" != "ffff" ]; then
-    echo "rmtplay.sh: $song: not an RMT module (no Atari binary header)" >&2
-    exit 1
-fi
+case $song in
+    *.sap|*.SAP)
+        if [ "$(head -c 4 "$song")" != "$(printf 'SAP\r')" ]; then
+            echo "rmtplay.sh: $song: not a SAP file" >&2
+            exit 1
+        fi
+        ;;
+    *)
+        if [ "$(head -c 2 "$song" | od -An -tx1 | tr -d ' \n')" != "ffff" ]; then
+            echo "rmtplay.sh: $song: not an RMT module or XEX (no Atari binary header)" >&2
+            exit 1
+        fi
+        ;;
+esac
 
 dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 emu=${ATARI800:-atari800}
@@ -64,7 +78,8 @@ case $song_abs in
 esac
 
 echo "rmtplay.sh: building RMTPLAY.COM for $(basename "$song") (screen: $screen)"
-make -C "$dir" --no-print-directory RMTPLAY.COM RMT_SONG="$song_abs" RMT_SCREEN="$screen"
+make -C "$dir" --no-print-directory RMTPLAY.COM RMT_SONG="$song_abs" RMT_SCREEN="$screen" \
+     RMT_SUBSONG="${RMT_SUBSONG:-0}"
 
 echo "rmtplay.sh: starting $emu"
 # shellcheck disable=SC2086 # ATARI800_OPTS is a list of options
