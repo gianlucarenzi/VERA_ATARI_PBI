@@ -227,6 +227,24 @@ In stereo con i due schermi il resto del frame va al player a 8 tracce (N chiama
 `psg_update`. Lo schermo ANTIC dopo 600 frame coincide con quello di prima (scorrimento, tempo,
 posizione); la VERA riceve gli stessi codici agli stessi indirizzi, presi da una tabella.
 
+## RMTPLAY: memoria
+
+RMTPLAY con i due schermi, il PSG (5 KB di tabelle) e un SAP stereo lungo sta stretto sotto
+`$BC20`. L'export SAP stereo di `claude_3ch_stereo_speed_4.rmt` (17 KB di stream) sforava di
+2,7 KB; ora entra con 406 byte liberi:
+
+- il font ANTIC (1 KB, `CHBAS` vuole un indirizzo multiplo di 1 KB) sta nel segmento `FONT` di
+  `testrmt.cfg`, primo in memoria a `$2000`: prima era un buffer di 2 KB allineato al suo interno
+  (1 KB sprecato);
+- i codici schermo delle righe NAME / AUTHOR / DATE lunghe sono array lunghi quanto la riga
+  (`sizeof` del testo di `songinfo.h`), non tre da 200 byte;
+- stack C di 512 byte invece di 2 KB, solo per RMTPLAY (`-Wl -D,__STACKSIZE__=0x200` nel
+  Makefile): con `#pragma static-locals` sullo stack vanno solo gli argomenti delle chiamate.
+
+Provato in atari800 con `-verax16 -pokeyrec`: RMTPLAY con quel SAP suona 9982 frame (intro e più
+giri del loop) con il POKEY uguale, frame per frame, al POKEY sinistro del SAP-R di RITMO 2.6;
+schermi ANTIC e VERA controllati a vista (barre, testo che scorre, registri, tempo).
+
 ## Limiti
 
 - **Instrument speed > 1**: le N chiamate per frame sono consecutive, non distribuite nel frame

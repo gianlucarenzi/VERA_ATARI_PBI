@@ -155,8 +155,11 @@ static const unsigned int vera_row[24] = {
     VROW(12), VROW(13), VROW(14), VROW(15), VROW(16), VROW(17), VROW(18), VROW(19), VROW(20), VROW(21), VROW(22), VROW(23)
 };
 #endif
-static unsigned char fontbuf[2048];         /* 1 KB font, aligned inside */
-static unsigned char *font;                 /* ANTIC font (CHBAS) */
+/* ANTIC font (CHBAS): 1 KB on a 1 KB boundary, segment FONT of testrmt.cfg
+ * (first in memory, so the alignment costs nothing) */
+#pragma bss-name (push, "FONT")
+static unsigned char font[1024];
+#pragma bss-name (pop)
 static unsigned char bar_px[RMT_TRACKS];    /* height shown, with fall-off */
 static unsigned char bar_shown[RMT_TRACKS]; /* height drawn on screen */
 static unsigned char line_buf[40];
@@ -300,7 +303,6 @@ static void make_font(void)
 {
     unsigned char h, r, b;
 
-    font = (unsigned char *)(((unsigned int)fontbuf + 1023) & 0xFC00);
     memcpy(font, (void *)0xE000, 1024);
     /* glyph h (1..8), drawn in ANTIC mode 4 (4 pixels of 2 bits per byte):
      * the bottom h pixel rows lit, as LED segments of 3 lit rows and 1 dark
@@ -472,7 +474,13 @@ static const char *const info_text[3] = { RMT_INFO_NAME, RMT_INFO_AUTHOR, RMT_IN
 static unsigned char info_len[3];
 static unsigned char info_shown[3];         /* scroll offset drawn */
 static unsigned char info_cells[3][40];     /* screen codes on the row */
-static unsigned char info_codes[3][200];    /* screen codes of a long line (rmtinfo.py keeps 200 characters) */
+/* screen codes of a long line (rmtinfo.py keeps 200 characters), as long as
+ * the line, one byte for a line that fits on the screen */
+#define INFO_CODES(t)   (sizeof(t) - 1 > 40 ? sizeof(t) - 1 : 1)
+static unsigned char info_codes0[INFO_CODES(RMT_INFO_NAME)];
+static unsigned char info_codes1[INFO_CODES(RMT_INFO_AUTHOR)];
+static unsigned char info_codes2[INFO_CODES(RMT_INFO_DATE)];
+static unsigned char *const info_codes[3] = { info_codes0, info_codes1, info_codes2 };
 
 #if SCROLL_GAP < 40
 #error "info_render() needs the blanks of a whole row"
@@ -523,7 +531,7 @@ static void draw_static(void)
             put_center(ROW_NAME + i, info_text[i]);
             continue;
         }
-        for (x = 0; x < info_len[i] && x < sizeof info_codes[0]; x++)
+        for (x = 0; x < info_len[i]; x++)
             info_codes[i][x] = screen_code((unsigned char)info_text[i][x]);
         info_shown[i] = 0;
         info_render(i, 0, info_cells[i]);
