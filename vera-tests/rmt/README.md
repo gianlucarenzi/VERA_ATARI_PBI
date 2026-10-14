@@ -77,8 +77,14 @@ make TESTRMT.COM RMT_SONG=file.xex RMT_SUBSONG=1                   # un altro su
 - `lzsplayr.s` decodifica un frame per `rmt_play` (9 flussi di byte con una finestra di 256 byte
   ciascuno: 2,3 KB di BSS, 4 byte di pagina zero): l'intro una volta, poi il loop all'infinito.
   Come `rmtplayr.s`, `rmt_play` scrive prima il POKEY e poi decodifica il frame successivo. Uno
-  stereo decodifica due frame per chiamata: il sinistro nei canali 1-4 (POKEY), il destro nei
-  canali 5-8 e in `v_audctl2` (solo VERA).
+  stereo decodifica due frame per chiamata. Nello stream c'è prima il POKEY destro, poi il
+  sinistro (come nel SAP-R di RITMO; VU-Player scrive il primo in `$D210`): il destro va nei
+  canali 5-8 e in `v_audctl2` (solo VERA), il sinistro nei canali 1-4 (POKEY). Fino alla
+  versione precedente erano scambiati: con `claude_3ch_stereo_speed_4` l'eco del canale 8
+  suonava sul POKEY invece che sulla VERA.
+- Lo stesso file è in `AT2019/ATARI-Driver/RmtSkeleton/src`, dove un brano stereo suona i
+  canali 5-8 sulla VERA o su un secondo POKEY; quella parte (8 tracce senza `RMT_VERA`) qui
+  non viene assemblata.
 - Instrument speed N: lo stream ha N frame per frame video, `rmtvbi.s` chiama il player N volte
   per frame come per un `.rmt`.
 - RMTPLAY mostra `SECT` (sezione dello stream: 0 intro, 1 loop, oppure 0 se il brano torna
@@ -87,8 +93,10 @@ make TESTRMT.COM RMT_SONG=file.xex RMT_SUBSONG=1                   # un altro su
 Verificato: su un emulatore 6502 `lzsplayr.s` dà i registri POKEY di VU-Player v2 byte per byte
 (22 export SAP di 11 brani con i driver Patch16 e Unpatched, più stereo e instrument speed 2). In
 atari800 con `-verax16` e `-pokeyrec` RMTPLAY suona `gemx.sap` per 7,4 minuti e
-`Final_Fantasy.sap` (stereo, POKEY = canali di sinistra) per 8 minuti, e un brano a speed 2 per 6
-minuti, con ogni frame uguale a quello decodificato dal file.
+`Final_Fantasy.sap` (stereo) per 8 minuti, e un brano a speed 2 per 6 minuti, con ogni frame
+uguale a quello decodificato dal file. Con l'ordine dei POKEY corretto, `TESTRMT.COM` con l'export
+SAP stereo di `claude_3ch_stereo_speed_4.rmt` dà sul POKEY, per tutto il brano (3070 frame), i
+registri del POKEY sinistro del SAP-R di RITMO 2.6, e l'eco del canale 8 non c'è mai.
 
 In un SAP esportato da RITMO prima della 2.6, VU-Player stesso dopo il secondo giro del loop va
 avanti diversamente: il suo `INIT` azzerava il contatore dei loop che l'export mette a `$FF`
