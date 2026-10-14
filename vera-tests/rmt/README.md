@@ -192,6 +192,33 @@ Il brano viene collegato nell'eseguibile (`tools/rmt2ca65.py` lo rende rilocabil
 verifica che player e modulo coincidano. I dischi contengono la versione di default. Un `.sap` o
 `.xex` passa da `tools/sap2ca65.py` e `lzsplayr.s` (vedi sopra).
 
+## RMTPLAY: tempi del visualizzatore
+
+Il ciclo principale di `rmtplay.c` deve stare in un frame accanto al player sul VBI: barre a ogni
+frame, registri e campi di testo a frame alterni, solo le celle che cambiano, niente
+moltiplicazioni né divisioni lunghe (come RITMO PLAYER, l'XEX con il player RMT di RITMO, e il
+player C64 di `AT2019/ATARI-Driver/rmt_cbm64`). Con un brano a instrument speed 4 e i due schermi
+un giro durava da 3 a 5 frame: lo schermo si aggiornava circa 10 volte al secondo. Le cause:
+tutte le 8 righe di ogni barra che si muoveva riscritte su ANTIC e VERA, `frames / fps` (divisione
+a 32 bit) a ogni frame per il tempo, la riga lunga di NAME/AUTHOR ricostruita un carattere alla
+volta e il suo scorrimento calcolato con uno shift a 32 bit e un modulo, `y * 40` e
+`(y + 3) * 128` a ogni scrittura, i campi esadecimali passati per `screen_code()` e `memcpy()`,
+le variabili locali sullo stack di cc65 (ora `#pragma static-locals`, e `-Osir` nel Makefile).
+
+Misurato in atari800 con `-verax16` (contatori in una build di prova, 3000 giri del ciclo,
+aggiornamenti dello schermo al secondo):
+
+| Brano | ANTIC + VERA prima | dopo | solo ANTIC | solo VERA |
+|---|---|---|---|---|
+| `claude_3ch_mono_speed_4.rmt` (RMT4, speed 4) | ~10 | 50 | | |
+| `claude_3ch_stereo_speed_4.rmt` (RMT8, speed 4) | ~10 | ~41 | ~10 → ~47 | ~12 → 50 |
+| `stereo_reference_song.rmt` di RITMO (RMT8, speed 4) | ~12 | ~45 | | |
+| `gemx.sap` | | 50 | | |
+
+In stereo con i due schermi il resto del frame va al player a 8 tracce (N chiamate) e a
+`psg_update`. Lo schermo ANTIC dopo 600 frame coincide con quello di prima (scorrimento, tempo,
+posizione); la VERA riceve gli stessi codici agli stessi indirizzi, presi da una tabella.
+
 ## Limiti
 
 - **Instrument speed > 1**: le N chiamate per frame sono consecutive, non distribuite nel frame

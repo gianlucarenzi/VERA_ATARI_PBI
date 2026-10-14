@@ -39,6 +39,13 @@
 #include "rmt.h"
 #include "songinfo.h"
 
+/* cc65 is much faster with static locals; nothing here is recursive. The main loop must fit in a frame next to the
+ * player on the VBI: the bars every frame, the registers and the text fields every other frame, no multiplications
+ * or long divisions, only the cells that change are written (as the XEX with the RMT player of RITMO, from this
+ * program, and the C64 player of AT2019/ATARI-Driver/rmt_cbm64). It took 3 to 5 frames per pass with both screens
+ * and a song at instrument speed 4: the screen of the visualizer moved about 10 times a second. */
+#pragma static-locals (on)
+
 /* ---- player state (rmtplayr.s, rmtdli.s, song.s) ---------------------- */
 
 extern volatile unsigned char *rmt_p_song;          /* next song line */
@@ -137,9 +144,17 @@ extern unsigned char rmt_dli_count, rmt_dli_idx;
 #define MODE_HYBRID 4
 
 static const char *const mode_name[5] = { "", "POKEY ", "VERA  ", "BOTH  ", "HYBRID" };
-static const char hexdig[] = "0123456789ABCDEF";
 
 static unsigned char *scr;
+static unsigned char *row_ptr[24];          /* the ANTIC screen rows */
+#if RMTPLAY_VERA
+/* VERA map address of each row: 128 bytes per row, the 24 rows centred in 30 */
+#define VROW(y)     (VMAP + ((y) + V_ROW_OFS) * 128)
+static const unsigned int vera_row[24] = {
+    VROW(0), VROW(1), VROW(2), VROW(3), VROW(4), VROW(5), VROW(6), VROW(7), VROW(8), VROW(9), VROW(10), VROW(11),
+    VROW(12), VROW(13), VROW(14), VROW(15), VROW(16), VROW(17), VROW(18), VROW(19), VROW(20), VROW(21), VROW(22), VROW(23)
+};
+#endif
 static unsigned char fontbuf[2048];         /* 1 KB font, aligned inside */
 static unsigned char *font;                 /* ANTIC font (CHBAS) */
 static unsigned char bar_px[RMT_TRACKS];    /* height shown, with fall-off */
@@ -185,13 +200,9 @@ static unsigned char screen_code(unsigned char c)
 }
 
 #if RMTPLAY_VERA
-static void vera_seek(unsigned char bank, unsigned int addr, unsigned char inc)
-{
-    VERA_ADDR_L = (unsigned char)addr;
-    VERA_ADDR_M = (unsigned char)(addr >> 8);
-    VERA_ADDR_H = inc | bank;
-}
-
+/* a macro, not a function: it is on the path of every screen write */
+#define vera_seek(bank, addr, inc) do { unsigned int a_ = (addr); \
+    VERA_ADDR_L = (unsigned char)a_; VERA_ADDR_M = (unsigned char)(a_ >> 8); VERA_ADDR_H = (inc) | (bank); } while (0)
 #endif
 
 /* Every screen write goes through these two: the same screen codes on the
@@ -200,13 +211,13 @@ static void vera_seek(unsigned char bank, unsigned int addr, unsigned char inc)
 static void put_codes(unsigned char x, unsigned char y, const unsigned char *c, unsigned char n)
 {
 #if RMTPLAY_ANTIC
-    memcpy(scr + y * 40 + x, c, n);
+    memcpy(row_ptr[y] + x, c, n);
 #endif
 #if RMTPLAY_VERA
     {
         unsigned char i;
 
-        vera_seek(0, VMAP + (y + V_ROW_OFS) * 128 + x * 2, VERA_INC2);
+        vera_seek(0, vera_row[y] + (x << 1), VERA_INC2);
         for (i = 0; i < n; i++)
             VERA_DATA0 = c[i];
     }
@@ -215,17 +226,17 @@ static void put_codes(unsigned char x, unsigned char y, const unsigned char *c, 
 
 static void fill_codes(unsigned char x, unsigned char y, unsigned char c, unsigned char n)
 {
+    unsigned char i;
 #if RMTPLAY_ANTIC
-    memset(scr + y * 40 + x, c, n);
+    unsigned char *p = row_ptr[y] + x;
+
+    for (i = 0; i < n; i++)     /* a few cells: no memset() call */
+        p[i] = c;
 #endif
 #if RMTPLAY_VERA
-    {
-        unsigned char i;
-
-        vera_seek(0, VMAP + (y + V_ROW_OFS) * 128 + x * 2, VERA_INC2);
-        for (i = 0; i < n; i++)
-            VERA_DATA0 = c;
-    }
+    vera_seek(0, vera_row[y] + (x << 1), VERA_INC2);
+    for (i = 0; i < n; i++)
+        VERA_DATA0 = c;
 #endif
 }
 
@@ -247,22 +258,40 @@ static void put_center(unsigned char y, const char *s)
     put_text(n < 40 ? (40 - n) / 2 : 0, y, s, 0);
 }
 
+/* the hex digits as screen codes */
+static const unsigned char hexcode[16] = {
+    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26
+};
+
+/* the register fields change at every frame with instrument speed 4: two direct writes on each screen */
 static void put_hex(unsigned char x, unsigned char y, unsigned char v)
 {
-    line_buf[0] = screen_code(hexdig[v >> 4]);
-    line_buf[1] = screen_code(hexdig[v & 15]);
-    put_codes(x, y, line_buf, 2);
+    unsigned char a = hexcode[v >> 4], b = hexcode[v & 15];
+#if RMTPLAY_ANTIC
+    unsigned char *p = row_ptr[y] + x;
+
+    p[0] = a;
+    p[1] = b;
+#endif
+#if RMTPLAY_VERA
+    vera_seek(0, vera_row[y] + (x << 1), VERA_INC2);
+    VERA_DATA0 = a;
+    VERA_DATA0 = b;
+#endif
 }
 
-static void put_dec(unsigned char x, unsigned char y, unsigned int v, unsigned char digits)
+/* two decimal digits of v (0..99): the tens by subtraction (the division of cc65 takes hundreds of cycles) */
+static void put_dec2(unsigned char x, unsigned char y, unsigned char v)
 {
-    unsigned char i = digits;
+    unsigned char t = 0x10;     /* screen code of '0' */
 
-    while (i--) {
-        line_buf[i] = screen_code('0' + v % 10);
-        v /= 10;
+    while (v >= 10) {
+        v -= 10;
+        ++t;
     }
-    put_codes(x, y, line_buf, digits);
+    line_buf[0] = t;
+    line_buf[1] = 0x10 + v;
+    put_codes(x, y, line_buf, 2);
 }
 
 /* ---- font with the bar glyphs ----------------------------------------- */
@@ -443,19 +472,30 @@ static const char *const info_text[3] = { RMT_INFO_NAME, RMT_INFO_AUTHOR, RMT_IN
 static unsigned char info_len[3];
 static unsigned char info_shown[3];         /* scroll offset drawn */
 static unsigned char info_cells[3][40];     /* screen codes on the row */
+static unsigned char info_codes[3][200];    /* screen codes of a long line (rmtinfo.py keeps 200 characters) */
 
-/* the 40 cells of a long info line, from scroll offset k */
+#if SCROLL_GAP < 40
+#error "info_render() needs the blanks of a whole row"
+#endif
+
+/* The 40 cells of a long info line from scroll offset k: its screen codes (draw_static), then the SCROLL_GAP
+ * blanks; with a gap of a whole row the 40 cells are the text then blanks, or blanks then the text again, a copy
+ * and a fill (a character at a time, with screen_code(), it took a good part of a frame at every scroll step). */
 static void info_render(unsigned char i, unsigned char k, unsigned char *buf)
 {
-    const char *s = info_text[i];
-    unsigned char len = info_len[i];
-    unsigned char period = len + SCROLL_GAP;
-    unsigned char n;
+    const unsigned char *s = info_codes[i];
+    unsigned char len = info_len[i], n;
 
-    for (n = 0; n < 40; n++) {
-        buf[n] = k < len ? screen_code((unsigned char)s[k]) : 0;
-        if (++k == period)
-            k = 0;
+    if (k < len) {
+        n = len - k;
+        if (n > 40)
+            n = 40;
+        memcpy(buf, s + k, n);
+        memset(buf + n, 0, 40 - n);
+    } else {
+        n = len + SCROLL_GAP - k;   /* blanks before the text comes round again: 1..40 */
+        memset(buf, 0, n);
+        memcpy(buf + n, s, 40 - n);
     }
 }
 
@@ -483,6 +523,8 @@ static void draw_static(void)
             put_center(ROW_NAME + i, info_text[i]);
             continue;
         }
+        for (x = 0; x < info_len[i] && x < sizeof info_codes[0]; x++)
+            info_codes[i][x] = screen_code((unsigned char)info_text[i][x]);
         info_shown[i] = 0;
         info_render(i, 0, info_cells[i]);
         put_codes(0, ROW_NAME + i, info_cells[i], 40);
@@ -520,28 +562,58 @@ static void draw_static(void)
 /* ---- dynamic parts ----------------------------------------------------- */
 
 /* Coarse scroll of the info lines longer than 40 characters: the text and
- * SCROLL_GAP blanks go round in the 40 columns of the row. The offset comes
- * from the play time, so it stops in pause and starts again from 0 (after
- * the wait) when the song is restarted.
+ * SCROLL_GAP blanks go round in the 40 columns of the row, after SCROLL_WAIT
+ * seconds of play one character every 2^SCROLL_SHIFT frames. It follows the
+ * frames played (it stops in pause and starts again from 0, after the wait,
+ * when the song is restarted), kept step by step: the offset from the total
+ * of the frames took a 32 bit shift and a 16 bit modulo per line.
  *
  * Only the cells that change are written (info_cells[] keeps the row): no
  * writes while the row is blank, none for repeated characters. Changed cells
  * close together go out as one run, so VERA gets a new address only when
  * the unchanged gap is longer than the SCROLL_SEEK writes of a seek. */
-static void draw_info(unsigned long frames, unsigned char fps)
+static unsigned int info_wait;              /* frames of play before the long lines scroll */
+static unsigned char info_sub;              /* frames since the last scroll step */
+
+static void info_reset(unsigned char fps)
 {
-    unsigned int wait = fps * SCROLL_WAIT;
-    unsigned int step;
-    unsigned char i, k, x, start, end;
+    unsigned char i;
+
+    info_wait = fps * SCROLL_WAIT;
+    info_sub = 0;
+    for (i = 0; i < 3; i++)
+        if (info_len[i] > 40 && info_shown[i]) {
+            info_shown[i] = 0;
+            info_render(i, 0, info_cells[i]);
+            put_codes(0, ROW_NAME + i, info_cells[i], 40);
+        }
+}
+
+static void draw_info(unsigned char adv)    /* frames played since the last call */
+{
+    unsigned char i, k, n, x, start, end, period;
     unsigned char *old;
 
-    step = frames < wait ? 0 : (unsigned int)((frames - wait) >> SCROLL_SHIFT);
+    if (info_wait) {
+        if (info_wait > adv) {
+            info_wait -= adv;
+            return;
+        }
+        adv -= (unsigned char)info_wait;
+        info_wait = 0;
+    }
+    info_sub += adv;
+    n = info_sub >> SCROLL_SHIFT;
+    if (!n)
+        return;
+    info_sub &= (1 << SCROLL_SHIFT) - 1;
     for (i = 0; i < 3; i++) {
         if (info_len[i] <= 40)
             continue;
-        k = (unsigned char)(step % (unsigned char)(info_len[i] + SCROLL_GAP));
-        if (k == info_shown[i])
-            continue;
+        period = info_len[i] + SCROLL_GAP;
+        k = info_shown[i] + n;
+        while (k >= period)
+            k -= period;
         info_shown[i] = k;
         info_render(i, k, line_buf);
         old = info_cells[i];
@@ -567,9 +639,21 @@ static void draw_info(unsigned long frames, unsigned char fps)
     }
 }
 
+/* the left column of each bar */
+static const unsigned char bar_x[RMT_TRACKS] = {
+#if RMT_TRACKS > 4
+    BAR_X0, BAR_X0 + BAR_STEP, BAR_X0 + 2 * BAR_STEP, BAR_X0 + 3 * BAR_STEP,
+    BAR_X0 + 4 * BAR_STEP, BAR_X0 + 5 * BAR_STEP, BAR_X0 + 6 * BAR_STEP, BAR_X0 + 7 * BAR_STEP
+#else
+    BAR_X0, BAR_X0 + BAR_STEP, BAR_X0 + 2 * BAR_STEP, BAR_X0 + 3 * BAR_STEP
+#endif
+};
+
+/* only the rows between the old and the new top of a bar are written (VERA
+ * writes are slow, and most bars move every frame at instrument speed 4) */
 static void draw_bars(unsigned char paused)
 {
-    unsigned char i, r, x, h, g, target;
+    unsigned char i, r, last, h, g, target;
 
     for (i = 0; i < RMT_TRACKS; i++) {
         target = paused ? 0 : (unsigned char)((rmt_chan_audc[i] & 0x0F) << 2);
@@ -579,15 +663,25 @@ static void draw_bars(unsigned char paused)
             bar_px[i] -= (bar_px[i] - target > 2) ? 2 : bar_px[i] - target;
 
         h = bar_px[i];
-        if (h == bar_shown[i])
-            continue;       /* VERA writes are slow: only bars that moved */
+        g = bar_shown[i];
+        if (h == g)
+            continue;       /* only the bars that moved */
         bar_shown[i] = h;
-        x = BAR_X0 + i * BAR_STEP;
-        for (r = 0; r < BAR_ROWS; r++) {
-            /* r = 0 is the bottom row */
-            g = h > r * 8 ? (h - r * 8 > 8 ? 8 : h - r * 8) : 0;
-            g = g ? GLYPH_BASE + g : 0;
-            fill_codes(x, BAR_TOP + BAR_ROWS - 1 - r, g, BAR_W);
+        if (g < h) {        /* r = 0 is the bottom row */
+            r = g >> 3;
+            last = (h - 1) >> 3;
+        } else {
+            r = h >> 3;
+            last = (g - 1) >> 3;
+        }
+        for (; r <= last; r++) {
+            g = r << 3;     /* pixels of the bar in row r */
+            g = h > g ? h - g : 0;
+            if (g > 8)
+                g = 8;
+            if (g)
+                g += GLYPH_BASE;
+            fill_codes(bar_x[i], BAR_TOP + BAR_ROWS - 1 - r, g, BAR_W);
         }
     }
 }
@@ -672,14 +766,27 @@ static void draw_position(void)
 }
 #endif
 
-static void draw_state(unsigned long frames, unsigned char fps, unsigned char mode,
-                       unsigned char paused)
-{
-    unsigned int s = (unsigned int)(frames / fps);
+/* the play time: seconds counted from the frames, minutes and seconds kept apart (no divisions) */
+static unsigned char time_frames, time_sec, time_min;
 
-    if (changed(F_SEC, s)) {
-        put_dec(5, ROW_STATE, s / 60, 2);
-        put_dec(8, ROW_STATE, s % 60, 2);
+static void count_time(unsigned char elapsed, unsigned char fps)
+{
+    time_frames += elapsed;
+    while (time_frames >= fps) {
+        time_frames -= fps;
+        if (++time_sec == 60) {
+            time_sec = 0;
+            if (++time_min == 100)
+                time_min = 0;
+        }
+    }
+}
+
+static void draw_state(unsigned char mode, unsigned char paused)
+{
+    if (changed(F_SEC, ((unsigned int)time_min << 8) | time_sec)) {
+        put_dec2(5, ROW_STATE, time_min);
+        put_dec2(8, ROW_STATE, time_sec);
     }
     if (changed(F_MODE, mode))
         put_text(18, ROW_STATE, mode_name[mode], 0);
@@ -703,11 +810,11 @@ int main(void)
     unsigned char mode = MODE_BOTH;
     unsigned char paused = 0;
     unsigned char fps = OS.palnts ? 50 : 60;
-    unsigned char tick, last, k;
+    unsigned char tick, last, k, i, elapsed, odd = 0;
+    unsigned char adv = 0;          /* frames played since the last draw_info() */
     unsigned char old_color1 = OS.color1, old_color2 = OS.color2, old_color4 = OS.color4;
     unsigned char old_chbas = OS.chbas;
     unsigned char old_sdmctl = OS.sdmctl;
-    unsigned long frames = 0;
 
     clrscr();
     vera_require();
@@ -725,6 +832,8 @@ int main(void)
     OS.crsinh = 1;
     clrscr();
     scr = OS.savmsc;
+    for (i = 0; i < 24; i++)
+        row_ptr[i] = scr + i * 40;
     OS.color1 = 0x0C;
     OS.color2 = 0x00;
     OS.color4 = 0x00;
@@ -737,6 +846,7 @@ int main(void)
     OS.sdmctl = 0;          /* VERA only: no ANTIC display DMA */
 #endif
     draw_static();
+    info_reset(fps);
 
     psg_init();
     set_mode(mode);
@@ -751,15 +861,24 @@ int main(void)
         /* once per frame */
         while ((tick = OS.rtclok[2]) == last)
             ;
-        if (!paused)
-            frames += (unsigned char)(tick - last);
+        elapsed = (unsigned char)(tick - last);
+        if (!paused) {
+            adv += elapsed;
+            count_time(elapsed, fps);
+        }
         last = tick;
 
+        /* the bars every frame, the registers and the text fields every other frame */
         draw_bars(paused);
-        draw_regs();
-        draw_position();
-        draw_state(frames, fps, mode, paused);
-        draw_info(frames, fps);
+        odd ^= 1;
+        if (odd) {
+            draw_regs();
+        } else {
+            draw_position();
+            draw_state(mode, paused);
+            draw_info(adv);
+            adv = 0;
+        }
 
         if (!kbhit())
             continue;
@@ -776,7 +895,9 @@ int main(void)
         else if (k == 'r' || k == 'R') {
             rmt_vbi_off();
             rmt_init(rmt_song);
-            frames = 0;
+            time_frames = time_sec = time_min = 0;
+            adv = 0;
+            info_reset(fps);
             paused = 0;
             rmt_vbi_on();
         }

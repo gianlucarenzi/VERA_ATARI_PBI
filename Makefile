@@ -370,7 +370,7 @@ else
 endif
 
 $(RMT_PLAY_EXE): $(RMT_DIR)/rmtplay.c $(RMT_DIR)/rmtdli.s $(RMT_DIR)/rmt.h $(RMT_ASM) $(RMT_DIR)/rmt_feat.inc $(RMT_DIR)/testrmt.cfg $(RMT_GEN)/psgtab.s $(RMT_GEN)/song.s $(RMT_GEN)/songinfo.h $(RMT_GEN)/rmtplay.cfg vera_common.inc vera-tests/vera_detect.h
-	cl65 -t atari -O -C $(RMT_DIR)/testrmt.cfg -I vera-tests -I $(RMT_DIR) -I $(RMT_GEN) \
+	cl65 -t atari -Osir -C $(RMT_DIR)/testrmt.cfg -I vera-tests -I $(RMT_DIR) -I $(RMT_GEN) \
 	     --asm-include-dir . --asm-include-dir $(RMT_DIR) --asm-define RMT_VERA \
 	     --asm-define RMT_TRACKS=$(RMT_TRACKS) -DRMT_TRACKS=$(RMT_TRACKS) $(RMT_SCREEN_FLAGS) \
 	     $(if $(RMT_LZSS),-DRMT_LZSS) -o $@ $(RMT_DIR)/rmtplay.c $(RMT_DIR)/rmtdli.s $(RMT_ASM) $(RMT_GEN)/psgtab.s $(RMT_GEN)/song.s
