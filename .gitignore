@@ -60,6 +60,7 @@ vera_pbi.atr
 /disk2-veratests-80x60.atr
 /disk3-standalone.atr
 /disk4-rmtio.atr
+/disk5-memtest.atr
 /vera-tests/test_font.o
 /vera-tests/test_gradient_scroll.o
 /vera-tests/test_maze.o
@@ -76,6 +77,7 @@ vera_pbi.atr
 # VTM player build artifacts (rebuild with `make`/tools/vtm_compile.py)
 /TESTPLR.COM
 /TESTIRQ.COM
+/TESTMEM.COM
 /TESTRMT.COM
 /RMTPLAY.COM
 /TESTRIO.COM

@@ -83,7 +83,7 @@ BUNDLE_VERA = bundle_vera.py
 .PHONY: all clean cleanall install atr labels drivers clean_objs
 
 # The default target builds the PBI ROM and all three driver versions.
-all: $(TARGET) $(SYS) drivers disk1-runcpm.atr disk2-veratests-40x30.atr disk2-veratests-80x30.atr disk2-veratests-80x60.atr disk3-standalone.atr disk4-rmtio.atr
+all: $(TARGET) $(SYS) drivers disk1-runcpm.atr disk2-veratests-40x30.atr disk2-veratests-80x30.atr disk2-veratests-80x60.atr disk3-standalone.atr disk4-rmtio.atr disk5-memtest.atr
 
 # Rule to generate the three resolution-specific drivers.
 # Each build requires a clean objects pass to ensure correct defines are applied.
@@ -169,6 +169,8 @@ TEST_FX_SRC   = vera-tests/test_fx.c
 TEST_FX_EXE   = TESTFX.COM
 TEST_IRQ_SRC  = vera-tests/test_irq.c
 TEST_IRQ_EXE  = TESTIRQ.COM
+TEST_MEM_SRC  = vera-tests/test_mem.c
+TEST_MEM_EXE  = TESTMEM.COM
 VERA_IRQ_SRC  = vera-tests/vera_irq.s
 VERA_IRQ_OBJ  = vera-tests/vera_irq.o
 TEST_MTX_SRC  = vera-tests/test_matrix.c
@@ -220,7 +222,7 @@ TEST_EXES     = TEST4.COM TEST8.COM TEST6.COM
 TESTGS_EXES   = TESTGS4.COM TESTGS8.COM TESTGS6.COM
 TESTMAZE_EXES = TESTMAZ4.COM TESTMAZ8.COM TESTMAZ6.COM
 TESTMTX_EXES  = TESTMTX4.COM TESTMTX8.COM TESTMTX6.COM
-ALL_TEST_EXES = $(TEST_EXES) $(TESTGS_EXES) $(TESTMAZE_EXES) $(TESTMTX_EXES) $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_RMT_EXE) $(TEST_RIO_EXE) $(TEST_PLAYER_EXE) $(RUNCPM_EXE)
+ALL_TEST_EXES = $(TEST_EXES) $(TESTGS_EXES) $(TESTMAZE_EXES) $(TESTMTX_EXES) $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_MEM_EXE) $(TEST_RMT_EXE) $(TEST_RIO_EXE) $(TEST_PLAYER_EXE) $(RUNCPM_EXE)
 
 # Template: compile once to an intermediate binary, then bundle three times.
 # $(1) = output base name (7 chars max, no digit suffix)
@@ -265,6 +267,11 @@ vera-tests/serterm_handler.o: vera-tests/serterm_handler.s
 
 $(TEST_FX_EXE): $(TEST_FX_SRC) vera-tests/vera_detect.h
 	cl65 -t atari --start-addr 0x5000 -o $(TEST_FX_EXE) $(TEST_FX_SRC)
+
+# the board's RAMbo 256K next to the VERA (test_mem.c is shared with VERA_C64/tests);
+# default start address: the program must stay below the $4000-$7FFF bank window
+$(TEST_MEM_EXE): $(TEST_MEM_SRC)
+	cl65 -t atari -O -o $(TEST_MEM_EXE) $(TEST_MEM_SRC)
 
 # VERA IRQ hook on VIMIRQ (standalone, no VERA.SYS needed)
 $(VERA_IRQ_OBJ): $(VERA_IRQ_SRC) vera_common.inc
@@ -496,6 +503,15 @@ disk3-standalone.atr: $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_PLAYER_EXE) $(DEMO_S
 	mkdir -p .atrbuild/disk3
 	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(TEST_FX_EXE) $(TEST_IRQ_EXE) $(TEST_PLAYER_EXE) $(DEMO_SONG_BIN) $(wildcard $(DEMO_IMAGE_BIN)) .atrbuild/disk3/
 	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk3
+	$(PYTHON) $(FIX_ATR) $@
+	$(call copy_atr_to_fujinet,$@)
+
+# RAMbo 256K + VERA memory test, standalone (disk3 is full)
+disk5-memtest.atr: $(TEST_MEM_EXE) $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(FIX_ATR)
+	rm -rf .atrbuild/disk5
+	mkdir -p .atrbuild/disk5
+	cp $(DOS20_DIR)/DOS.SYS $(DOS20_DIR)/DUP.SYS $(TEST_MEM_EXE) .atrbuild/disk5/
+	$(DIR2ATR) -E -b Dos20 $@ .atrbuild/disk5
 	$(PYTHON) $(FIX_ATR) $@
 	$(call copy_atr_to_fujinet,$@)
 
