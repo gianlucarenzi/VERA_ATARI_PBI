@@ -5,6 +5,7 @@
     .import _vera_saved_dosini, _vera_saved_casini
     .import _vera_saved_orig_ramtop, _vera_saved_dest_hi
     .import _install_es_hooks
+    .import vsel_enter, vsel_leave
     .import __VERA_EXPORTS__
 
     .include "atari.inc"
@@ -31,7 +32,13 @@ re_install_hooks:
 ; Called unconditionally from both DOSINI and CASINI hooks before any chaining.
 ; Must NOT call _vera_warm_reinit (which has a busy-wait + do_clear that
 ; disables DMACTL for ~46 ms — the cause of ANTIC screen garbage on warm reset).
+; The VERA is reached only with the card selected (vsel_enter, vera_driver.s)
 common_reinit:
+    jsr vsel_enter
+    jsr reinit
+    jmp vsel_leave
+
+reinit:
     lda #0
     sta CRITIC
 

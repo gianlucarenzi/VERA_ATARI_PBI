@@ -25,6 +25,7 @@
     .export kbd_ring_buf, kbd_ring_rd, kbd_ring_wr, kbd_repeat_raw
 
     .import _CallVeraApiService
+    .import vsel_enter, vsel_leave
     .import _vera_ctl_block
     .import _InitVbi
     .import _vera_trigger_click
@@ -549,6 +550,11 @@ vera_screen_put:
 ; ============================================================================
 
 vera_editor_open:
+    jsr vsel_enter
+    jsr editor_open
+    jmp vsel_leave
+
+editor_open:
     sei
     lda NMIEN
     pha                         ; save current NMI enables
@@ -570,6 +576,11 @@ vera_editor_open:
 ; ============================================================================
 
 vera_screen_open:
+    jsr vsel_enter
+    jsr screen_open
+    jmp vsel_leave
+
+screen_open:
     lda #2
     sta LMARGN
     lda #SCREEN_COLS_VIEW - 1
@@ -596,6 +607,11 @@ vera_screen_open:
 ; ============================================================================
 
 vera_editor_get:
+    jsr vsel_enter
+    jsr editor_get
+    jmp vsel_leave
+
+editor_get:
     lda input_ready
     beq @need_input
 
@@ -1394,6 +1410,11 @@ echo_to_vera:
 ; ============================================================================
 
 _install_es_hooks:
+    jsr vsel_enter
+    jsr install_es_hooks
+    jmp vsel_leave
+
+install_es_hooks:
     ; Reset GET line-buffer and ring-buffer state.
     lda #0
     sta input_ready

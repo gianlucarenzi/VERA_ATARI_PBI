@@ -133,6 +133,12 @@ _vbi_handler:
     tya
     pha
 
+    ; The VERA answers only while the card is selected: select it, and on
+    ; exit write back the selection of the interrupted code (SHPDVS, kept
+    ; by vsel_enter / vsel_leave in vera_driver.s).
+    lda #VERA_PBI_BIT
+    sta PBI_LATCH
+
     ; Click tick runs every VBI (60Hz) for responsiveness
     jsr click_tick
 
@@ -141,6 +147,9 @@ _vbi_handler:
 
     ; Cursor tick runs every VBI — keeps cursor always visible.
     jsr cursor_tick
+
+    lda SHPDVS
+    sta PBI_LATCH
 
     pla
     tay

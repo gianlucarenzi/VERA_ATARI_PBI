@@ -6,6 +6,12 @@
 ; OS contract: the OS reaches this code by "JMP (VIMIRQ)" with nothing saved
 ; except what the 6502 pushed (P, PC).  A, X and Y must be preserved; to
 ; pass an IRQ on, restore A and JMP (old VIMIRQ) with the registers as at entry.
+;
+; The VERA answers only while the card's PBI bit is set in $D1FF (Atari PBI
+; rule): the handler selects the card on entry (the OS may have deselected
+; it) and writes back the selection the OS knows of (SHPDVS) before leaving.
+; Read deselected, ISR & IEN would be $FF and the VERA's level IRQ would
+; never be cleared.
 ; ============================================================================
 
     .setcpu "6502"
@@ -42,10 +48,14 @@ _vera_irq_count: .res 4
 ; ----------------------------------------------------------------------------
 irq_handler:
     pha
+    lda #VERA_PBI_BIT
+    sta PBI_LATCH
     lda VERA_ISR
     and VERA_IEN
     and #IRQ_MASK
     bne @ours
+    lda SHPDVS
+    sta PBI_LATCH
     pla
     jmp (old_vimirq)            ; not the VERA: let the OS handle it
 
@@ -96,6 +106,8 @@ irq_handler:
     pla
     tax
 @done:
+    lda SHPDVS
+    sta PBI_LATCH
     pla
     rti
 

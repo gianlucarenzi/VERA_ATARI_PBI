@@ -404,8 +404,10 @@ $(RMT_GEN)/assets.h: $(RMT_GEN)/assets.cfg $(RMT_DIR)/tools/mkassets.py
 	$(PYTHON) $(RMT_DIR)/tools/mkassets.py --out $(RIO_DISK) --header $@ \
 		--reserved $(TEST_RIO_EXE) --sizes $(RIO_ASSET_SIZES)
 
+# C stack of 1.5 KB instead of 2 KB: room for the PBI select code of
+# vera_detect.h (the program had less than 40 bytes free)
 $(TEST_RIO_EXE): $(RIO_SRC) $(RMT_DIR)/dos2fs.h $(RMT_DIR)/rmt.h $(RMT_ASM) $(RMT_DIR)/rmt_feat.inc $(RMT_DIR)/testrmt.cfg $(RMT_GEN)/psgtab.s $(RMT_GEN)/song.s $(RMT_GEN)/assets.h vera_common.inc vera-tests/vera_detect.h
-	cl65 -t atari -O -C $(RMT_DIR)/testrmt.cfg -I vera-tests -I $(RMT_DIR) -I $(RMT_GEN) \
+	cl65 -t atari -O -C $(RMT_DIR)/testrmt.cfg -Wl -D,__STACKSIZE__=0x600 -I vera-tests -I $(RMT_DIR) -I $(RMT_GEN) \
 	     --asm-include-dir . --asm-include-dir $(RMT_DIR) --asm-define RMT_VERA \
 	     --asm-define RMT_TRACKS=$(RMT_TRACKS) -DRMT_TRACKS=$(RMT_TRACKS) \
 	     -DRMT_SONG_NAME=\"$(RMT_SONGNAME)\" \

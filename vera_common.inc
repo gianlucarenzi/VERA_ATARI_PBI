@@ -7,6 +7,7 @@
 
 PBI_ADDR                = $D100                     ; VERA PBI base address ($D100–$D11F)
 PBI_LATCH               = $D1FF                     ; PBI device-select latch
+VERA_PBI_BIT            = $80                       ; the card's PBI device bit
 
 ; ============================================================================
 ; VERA registers (at PBI_ADDR + offset)

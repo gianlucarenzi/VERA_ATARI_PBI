@@ -7,6 +7,7 @@
     .setcpu "6502"
 
     .export _vera_warm_reinit, _vera_hw_reinit, _vera_wait_and_clear, _CallVeraApiService, _VeraApiService, do_clear
+    .export vsel_enter, vsel_leave
     .import _vera_x16_font, _vera_ctl_block
     .import _vera_cursor_invalidate, cursor_draw, cursor_at_x, cursor_at_y, cursor_enabled
     .import _vera_trigger_click, _vera_scroll_hook
@@ -30,8 +31,51 @@ putc_inverse:       .res 1
 save_nmien:         .res 1
 first_init:         .res 1
 wait_target:        .res 1      ; RTCLOK+2 frame-count target for _vera_wait_and_clear
+vsel_depth:         .res 1      ; vsel_enter nesting
+vsel_saved:         .res 1      ; SHPDVS before the outermost vsel_enter
 
     .segment "CODE"
+
+; ============================================================================
+; vsel_enter / vsel_leave — the VERA answers only while the card's PBI bit is
+; set in $D1FF (Atari PBI rule), and while it is set the card's ROM replaces
+; the Math Pack at $D800-$DFFF.  So the driver selects the card only inside
+; its own entry points (CIO handlers, API, reset hooks) and gives back the
+; previous selection on exit: BASIC keeps its floating point.  SHPDVS (the
+; OS shadow of $D1FF) holds the selection, so the VBI, which selects the
+; card on entry and writes SHPDVS back to $D1FF on exit, always restores the
+; right one.  Nested calls (an entry calling another) select once.
+; Main level only (never from an interrupt).  Preserve A, X, Y and P.
+; ============================================================================
+
+vsel_enter:
+    php
+    pha
+    lda vsel_depth
+    bne @nested
+    lda SHPDVS
+    sta vsel_saved
+    lda #VERA_PBI_BIT
+    sta SHPDVS
+    sta PBI_LATCH
+@nested:
+    inc vsel_depth
+    pla
+    plp
+    rts
+
+vsel_leave:
+    php
+    pha
+    dec vsel_depth
+    bne @nested
+    lda vsel_saved
+    sta SHPDVS
+    sta PBI_LATCH
+@nested:
+    pla
+    plp
+    rts
 
 ; ============================================================================
 ; _VeraApiService — placeholder kept for symbol stability across versions
@@ -141,6 +185,11 @@ _vera_wait_and_clear:
 ; ============================================================================
 
 _vera_warm_reinit:
+    jsr vsel_enter
+    jsr warm_reinit
+    jmp vsel_leave
+
+warm_reinit:
     lda #1
     sta CRITIC          ; block deferred VBI cursor during init
 
@@ -256,6 +305,11 @@ ReadyText:
     .import kbd_ring_buf, kbd_ring_rd, kbd_ring_wr, kbd_repeat_raw
 
 _CallVeraApiService:
+    jsr vsel_enter
+    jsr call_api
+    jmp vsel_leave
+
+call_api:
     lda #1
     sta CRITIC
     lda _vera_ctl_block + VERACTL_REQUEST
